@@ -51,7 +51,7 @@ object BrowserDownloader {
             }
             val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
             val id = dm.enqueue(request)
-            DownloadsRegistry.add(DownloadEntry(fileName, "Iniciado", "id:$id"))
+            DownloadsRegistry.add(DownloadEntry(fileName, "Iniciado", "Descargando…", id))
             DownloadsRegistry.track(id, fileName)
         }.onFailure {
             DownloadsRegistry.add(DownloadEntry("Descarga", "Error: ${it.message ?: it.javaClass.simpleName}", url.take(80)))

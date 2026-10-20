@@ -105,6 +105,9 @@ object TabRegistry {
             webViewAvailable.value = false
             return
         }
+        runCatching {
+            wv.addJavascriptInterface(MediaBridge, "NexMedia")
+        }
         wv.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest): Boolean =
                 handleUrlOverride(tab, view, req.url.toString())
@@ -149,6 +152,7 @@ object TabRegistry {
                 }
                 runCatching { UserScriptEngine.injectAll(view, url) }
                 applyContentBlocking(view, url)
+                applyMediaWatch(view)
                 detectPlayableVideo(view, url)
             }
 
@@ -199,6 +203,63 @@ object TabRegistry {
     }
 
     private val EMPTY_BODY = ByteArray(0)
+
+    /** JS bridge: web media events toggle the background playback service. */
+    private object MediaBridge {
+        @android.webkit.JavascriptInterface
+        fun onMediaPlaying(title: String?) {
+            val ctx = appContext ?: return
+            com.nexun.nexbrowser.media.MediaControl.start(
+                ctx, title?.takeIf { it.isNotBlank() } ?: "Reproduciendo"
+            )
+        }
+
+        @android.webkit.JavascriptInterface
+        fun onMediaStopped() {
+            val ctx = appContext ?: return
+            com.nexun.nexbrowser.media.MediaControl.stop(ctx)
+        }
+    }
+
+    private val MEDIA_WATCH_JS = """
+        (function(){
+          if(window.__nexMediaWatch) return; window.__nexMediaWatch=true;
+          function report(){
+            try{
+              var list=document.querySelectorAll('video,audio');var playing=false;
+              for(var i=0;i<list.length;i++){
+                var m=list[i];
+                if(!m.paused && !m.ended && m.readyState>2){playing=true;}
+                if(!m.__nexHooked){
+                  m.__nexHooked=true;
+                  m.addEventListener('play',function(){ if(window.NexMedia) NexMedia.onMediaPlaying(document.title); });
+                  m.addEventListener('playing',function(){ if(window.NexMedia) NexMedia.onMediaPlaying(document.title); });
+                  m.addEventListener('pause',function(){ setTimeout(check,300); });
+                  m.addEventListener('ended',function(){ setTimeout(check,300); });
+                }
+              }
+              if(playing && window.NexMedia) NexMedia.onMediaPlaying(document.title);
+              else check();
+            }catch(e){}
+          }
+          function check(){
+            try{
+              var list=document.querySelectorAll('video,audio');var p=false;
+              for(var i=0;i<list.length;i++){var m=list[i];if(!m.paused&&!m.ended&&m.readyState>2){p=true;break;}}
+              if(!p && window.NexMedia) NexMedia.onMediaStopped();
+            }catch(e){}
+          }
+          document.addEventListener('play',function(){ if(window.NexMedia) NexMedia.onMediaPlaying(document.title); },true);
+          document.addEventListener('pause',function(){ setTimeout(check,300); },true);
+          document.addEventListener('ended',function(){ setTimeout(check,300); },true);
+          setInterval(report, 2000);
+        })();
+    """.trimIndent()
+
+    private fun applyMediaWatch(view: WebView?) {
+        view ?: return
+        runCatching { view.evaluateJavascript(MEDIA_WATCH_JS, null) }
+    }
 
     private fun applyContentBlocking(view: WebView?, pageUrl: String?) {
         if (view == null) return

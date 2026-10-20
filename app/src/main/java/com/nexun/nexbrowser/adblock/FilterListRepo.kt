@@ -9,11 +9,16 @@ import java.net.URL
 import java.util.zip.GZIPInputStream
 
 object FilterListRepo {
+    // Same upstream lists the Brave browser ships (EasyList family + Brave's own).
     private val SOURCES = listOf(
         "https://easylist.to/easylist/easylist.txt",
         "https://easylist.to/easylist/easyprivacy.txt",
+        "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-unbreak.txt",
+        "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/brave-specific.txt",
+        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters.txt",
+        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/privacy.txt",
+        "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=0&mimetype=plaintext",
         "https://raw.githubusercontent.com/AdguardTeam/AdguardFilters/master/BaseFilter/sections/adservers.txt",
-        "https://raw.githubusercontent.com/AdguardTeam/AdguardFilters/master/BaseFilter/sections/cosmetic.txt",
         "https://raw.githubusercontent.com/AdguardTeam/AdguardFilters/master/SpywareFilter/sections/tracking_servers.txt",
         "https://easylist.to/easylist/fanboy-annoyance.txt",
     )

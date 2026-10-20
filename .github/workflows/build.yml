@@ -36,6 +36,9 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
+      - name: Adblock engine self-test (simulation)
+        run: ./gradlew testReleaseUnitTest --stacktrace
+
       - name: Assemble debug
         run: ./gradlew assembleDebug --stacktrace
 

@@ -295,9 +295,12 @@ object AdblockEngine {
 
     private fun hostFromRule(rule: String): String? {
         var s = rule
+        // Strip trailing options ($script,third-party,...) and separators.
+        val dollar = s.indexOf('$')
+        if (dollar >= 0) s = s.substring(0, dollar)
         if (s.startsWith("||")) s = s.substring(2)
         s = s.trimStart('|')
-        val end = s.indexOfFirst { it == '^' || it == '/' || it == '|' || it == '$' || it == '*' }
+        val end = s.indexOfFirst { it == '^' || it == '/' || it == '|' || it == '*' }
         if (end >= 0) s = s.substring(0, end)
         s = s.removePrefix(".").removeSuffix(".")
         if (s.isEmpty() || s.contains('*') || s.contains(' ') || !s.contains('.')) return null
@@ -305,13 +308,31 @@ object AdblockEngine {
         return s
     }
 
+    /**
+     * Extracts path/segment keywords from path-based rules like `/adv/*`, `||x.com/banner^`.
+     * Kept short and hash-lookup friendly so blocking stays O(1)-ish per request.
+     */
     private fun keywordFromRule(rule: String): String? {
         var s = rule
-        if (s.startsWith("||")) return null
+        val dollar = s.indexOf('$')
+        if (dollar >= 0) s = s.substring(0, dollar)
+        if (s.startsWith("||")) {
+            // Host part may already be captured; look for a meaningful path segment.
+            val slash = s.indexOf('/')
+            val caret = s.indexOf('^')
+            val start = when {
+                slash >= 0 && (caret < 0 || slash < caret) -> slash
+                caret >= 0 -> caret
+                else -> return null
+            }
+            s = s.substring(start)
+        }
         s = s.trim('|', '^', '/', '*', '$', '.')
-        if (s.length < 5 || s.contains('*') || s.contains(' ')) return null
-        if (s.matches(Regex("""[\w\-./]+"""))) return s.lowercase()
-        return null
+        if (s.length < 5 || s.length > 60 || s.contains('*') || s.contains(' ') || s.contains('#')) return null
+        if (!s.all { it.isLetterOrDigit() || it == '-' || it == '_' || it == '.' || it == '/' }) return null
+        // Require at least one letter to avoid pure-number noise.
+        if (s.none { it.isLetter() }) return null
+        return s.lowercase()
     }
 
     fun ruleCount(): Int = exactHosts.size + keywordRules.size + genericHide.size

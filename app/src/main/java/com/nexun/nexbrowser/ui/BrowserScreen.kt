@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -186,15 +187,17 @@ fun BrowserScreen(onOpenExternal: (String) -> Unit) {
         },
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
-            AndroidView(
-                factory = { ctx ->
-                    tab.ensureWebView(ctx, incognito).also { wv ->
-                        attachPullToRefresh(wv) { tab.webView?.reload() }
-                    }
-                },
-                update = { wv -> (wv.parent as? ViewGroup)?.removeView(wv) },
-                modifier = Modifier.fillMaxSize(),
-            )
+            key(tab.id) {
+                AndroidView(
+                    factory = { ctx ->
+                        tab.ensureWebView(ctx, incognito).also { wv ->
+                            (wv.parent as? ViewGroup)?.removeView(wv)
+                            attachPullToRefresh(wv) { tab.webView?.reload() }
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             // Floating "download this video" button.
             AnimatedVisibility(
                 visible = detectedVideo != null,
@@ -553,24 +556,62 @@ private fun TabsSheet(
 
 @Composable
 private fun DownloadsDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
     val items = DownloadsRegistry.items
+    LaunchedEffect(Unit) {
+        while (true) {
+            DownloadsRegistry.refreshProgress()
+            kotlinx.coroutines.delay(700)
+        }
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(AppIcons.Download, null) },
         title = { Text("Descargas") },
         text = {
-            if (items.isEmpty()) Text("Aún no hay descargas.")
-            else LazyColumn(Modifier.heightIn(max = 400.dp)) {
-                items(items.size) { i ->
-                    val d = items[i]
-                    ListItem(
-                        headlineContent = { Text(d.name.take(50)) },
-                        supportingContent = { Text("${d.state} · ${d.detail.take(40)}") },
-                    )
+            if (items.isEmpty()) {
+                Text("Aún no hay descargas.")
+            } else {
+                Column {
+                    LazyColumn(Modifier.heightIn(max = 400.dp)) {
+                        items(items.size) { i ->
+                            val d = items[i]
+                            Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(d.name.take(48), fontWeight = FontWeight.Medium,
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(
+                                            if (d.progress in 0..100 && d.state == "Descargando")
+                                                "${d.state} · ${d.progress}%"
+                                            else "${d.state} · ${d.detail.take(36)}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                    IconButton(onClick = { DownloadsRegistry.remove(i) }) {
+                                        Icon(Icons.Default.Close, "Quitar", Modifier.size(18.dp))
+                                    }
+                                }
+                                if (d.progress in 0..99 && d.state == "Descargando") {
+                                    LinearProgressIndicator(
+                                        progress = { d.progress / 100f },
+                                        modifier = Modifier.fillMaxWidth().height(3.dp),
+                                    )
+                                }
+                            }
+                            HorizontalDivider()
+                        }
+                    }
                 }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } },
+        dismissButton = {
+            if (items.any { it.state == "Completado" || it.state.startsWith("Error") })
+                TextButton(onClick = { DownloadsRegistry.clearFinished() }) { Text("Limpiar") }
+        },
     )
 }
 

@@ -87,5 +87,6 @@ dependencies {
     implementation(libs.androidx.material.icons.core)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.newpipe.extractor)
+    testImplementation(libs.junit)
     debugImplementation(libs.androidx.ui.tooling)
 }
