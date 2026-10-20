@@ -194,6 +194,15 @@ object TabRegistry {
                     tab.canGoBack = view?.canGoBack() ?: false
                     tab.canGoForward = view?.canGoForward() ?: false
                 }
+                // The first load always runs as a vanilla WebView for maximum provider
+                // compatibility. Once it succeeds, enable the bridge + adblock for this
+                // tab and re-apply them to the page already displayed.
+                if (tab.safeMode && !tab.crashedOnce) {
+                    tab.safeMode = false
+                    runCatching {
+                        view?.addJavascriptInterface(MediaBridge, "NexMedia")
+                    }
+                }
                 runCatching { UserScriptEngine.injectAll(view, url) }
                 applyContentBlocking(view, url)
                 applyMediaWatch(view)
@@ -215,6 +224,7 @@ object TabRegistry {
                 val crashed = detail?.didCrash() ?: false
                 tab.onRendererGone(crashed)
                 tab.safeMode = true
+                tab.crashedOnce = true
                 runCatching {
                     (view?.parent as? android.view.ViewGroup)?.removeView(view)
                     view?.destroy()
@@ -338,9 +348,9 @@ object TabRegistry {
         runCatching { view.evaluateJavascript(MEDIA_WATCH_JS, null) }
     }
 
-    private fun applyContentBlocking(view: WebView?, pageUrl: String?) {
+    private fun applyContentBlocking(view: WebView?, pageUrl: String?, force: Boolean = false) {
         if (view == null) return
-        if (current()?.safeMode == true) return
+        if (!force && current()?.safeMode == true) return
         if (!BrowserSettings.shieldsEnabledFor(hostOfSafe(pageUrl))) return
         val js = AdblockEngine.cosmeticInjection(pageUrl) ?: return
         runCatching { view.evaluateJavascript(js, null) }

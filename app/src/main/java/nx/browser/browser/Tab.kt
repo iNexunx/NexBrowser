@@ -24,10 +24,13 @@ class Tab(val id: Long) {
     var rendererCrashed = false
     /**
      * When true the tab runs without the JS bridge, media watcher and synthetic
-     * ad responses. Used after a renderer crash so the page can still load on
-     * WebView providers that reject those features.
+     * ad responses. Starts true so the very first load is a plain vanilla WebView
+     * (maximum provider compatibility); it is turned off after the first page
+     * loads successfully, which then enables adblock + the media bridge.
      */
-    var safeMode = false
+    var safeMode = true
+    /** Once a renderer crash happened, never auto re-enable the risky features. */
+    var crashedOnce = false
 
     fun onRendererGone(crashed: Boolean) {
         rendererCrashed = crashed
