@@ -191,18 +191,37 @@ fun BrowserScreen(onOpenExternal: (String) -> Unit) {
             if (!webViewAvailable) {
                 WebViewUnavailableNotice()
             }
-            key(tab.id) {
+            key("webhost") {
                 AndroidView(
                     factory = { ctx ->
+                        android.widget.FrameLayout(ctx).apply {
+                            id = android.view.View.generateViewId()
+                            layoutParams = android.view.ViewGroup.LayoutParams(
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            )
+                        }
+                    },
+                    update = { frame ->
                         val wv = try {
-                            tab.ensureWebView(ctx, incognito)
+                            tab.ensureWebView(frame.context, incognito)
                         } catch (t: Throwable) {
                             TabRegistry.markWebViewUnavailable()
-                            return@AndroidView android.view.View(ctx)
+                            return@AndroidView
                         }
-                        (wv.parent as? ViewGroup)?.removeView(wv)
-                        attachPullToRefresh(wv) { tab.webView?.reload() }
-                        wv
+                        if (wv.parent !== frame) {
+                            (wv.parent as? ViewGroup)?.removeView(wv)
+                            if (frame.indexOfChild(wv) < 0) {
+                                frame.addView(
+                                    wv,
+                                    android.view.ViewGroup.LayoutParams(
+                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ),
+                                )
+                            }
+                            attachPullToRefresh(wv) { tab.webView?.reload() }
+                        }
                     },
                     modifier = Modifier.fillMaxSize(),
                 )
