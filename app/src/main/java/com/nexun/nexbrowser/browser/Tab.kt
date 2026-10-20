@@ -12,6 +12,7 @@ class Tab(val id: Long) {
     var url: String = "about:blank"
     var title: String = ""
     var isLoading = false
+    var loadFinished = false
     var progress = 0
     var canGoBack = false
     var canGoForward = false

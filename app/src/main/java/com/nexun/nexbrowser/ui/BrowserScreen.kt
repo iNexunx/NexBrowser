@@ -61,136 +61,131 @@ fun BrowserScreen(onOpenExternal: (String) -> Unit) {
     var showTabs by remember { mutableStateOf(false) }
     var showDownloads by remember { mutableStateOf(false) }
     var showYt by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     var findQuery by remember { mutableStateOf<String?>(null) }
-
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
 
     val secure = Url.isSecure(tab.url)
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            SettingsDrawer(
-                context = context,
-                onDismiss = { scope.launch { drawerState.close() } },
-                onOpenDownloads = {
-                    scope.launch { drawerState.close() }
-                    showDownloads = true
-                },
-                onOpenTabs = {
-                    scope.launch { drawerState.close() }
-                    showTabs = true
-                },
-                onNewTab = {
-                    scope.launch { drawerState.close() }
-                    TabRegistry.openTab()
-                },
-                onToggleIncognito = {
-                    scope.launch { drawerState.close() }
-                    TabRegistry.setIncognito(!incognito)
-                },
-                onOpenExternal = { onOpenExternal(tab.url) },
-            )
-        },
-    ) {
-        Scaffold(
-            topBar = {
-                Surface(tonalElevation = 2.dp) {
-                    Column {
-                        Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
-                        if (editing) {
-                            OmniEditField(
-                                value = omnibox,
-                                onValueChange = { omnibox = it },
-                                onSubmit = {
-                                    tab.webView?.loadUrl(Url.normalize(omnibox)); editing = false
+    // Full-screen settings page (no swipe drawer).
+    if (showSettings) {
+        SettingsScreen(
+            context = context,
+            onBack = { showSettings = false },
+            onOpenDownloads = { showSettings = false; showDownloads = true },
+            onOpenTabs = { showSettings = false; showTabs = true },
+            onNewTab = { showSettings = false; TabRegistry.openTab() },
+            onToggleIncognito = { showSettings = false; TabRegistry.setIncognito(!incognito) },
+            onOpenExternal = { onOpenExternal(tab.url) },
+        )
+        return
+    }
+
+    Scaffold(
+        topBar = {
+            Surface(tonalElevation = 2.dp) {
+                Column {
+                    Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+                    if (editing) {
+                        OmniEditField(
+                            value = omnibox,
+                            onValueChange = { omnibox = it },
+                            onSubmit = {
+                                tab.webView?.loadUrl(Url.normalize(omnibox)); editing = false
+                            },
+                            onCancel = { editing = false },
+                        )
+                    } else {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            IconButton(onClick = { showSettings = true }) {
+                                Icon(AppIcons.Menu, "Menú", modifier = Modifier.size(24.dp))
+                            }
+                            OmniboxBar(
+                                url = tab.url,
+                                secure = secure,
+                                incognito = incognito,
+                                title = tab.title,
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    omnibox = if (tab.url == TabRegistry.HOME) "" else tab.url
+                                    editing = true
                                 },
-                                onCancel = { editing = false },
                             )
-                        } else {
-                            Row(
-                                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                OmniboxBar(
-                                    url = tab.url,
-                                    secure = secure,
-                                    incognito = incognito,
-                                    title = tab.title,
-                                    modifier = Modifier.weight(1f),
-                                    onClick = {
-                                        omnibox = if (tab.url == TabRegistry.HOME) "" else tab.url
-                                        editing = true
-                                    },
-                                )
-                                if (tab.isLoading) {
-                                    IconButton(onClick = { tab.webView?.stopLoading() }) {
-                                        Icon(Icons.Default.Close, "Detener", modifier = Modifier.size(20.dp))
-                                    }
-                                } else {
-                                    IconButton(onClick = { tab.webView?.reload() }) {
-                                        Icon(Icons.Default.Refresh, "Recargar", modifier = Modifier.size(22.dp))
-                                    }
+                            if (tab.isLoading) {
+                                IconButton(onClick = { tab.webView?.stopLoading() }) {
+                                    Icon(Icons.Default.Close, "Detener", modifier = Modifier.size(20.dp))
+                                }
+                            } else {
+                                IconButton(onClick = { tab.webView?.reload() }) {
+                                    Icon(Icons.Default.Refresh, "Recargar", modifier = Modifier.size(22.dp))
                                 }
                             }
                         }
-                        if (tab.isLoading) {
-                            LinearProgressIndicator(
-                                progress = { tab.progress.coerceIn(0, 100) / 100f },
-                                modifier = Modifier.fillMaxWidth().height(2.dp),
-                            )
-                        }
                     }
-                }
-            },
-            bottomBar = {
-                Surface(tonalElevation = 3.dp) {
-                    Column {
-                        AnimatedVisibility(visible = findQuery != null) {
-                            FindBar(
-                                onFind = { q -> tab.webView?.findAllAsync(q) },
-                                onClose = {
-                                    tab.webView?.clearMatches(); findQuery = null
-                                },
-                                onNext = { tab.webView?.findNext(true) },
-                                onPrev = { tab.webView?.findNext(false) },
-                            )
-                        }
-                        BottomBar(
-                            canGoBack = tab.canGoBack,
-                            canGoForward = tab.canGoForward,
-                            tabCount = TabRegistry.count(),
-                            incognito = incognito,
-                            adblockCount = AdblockEngine.blockedCount,
-                            onBack = { if (tab.canGoBack) tab.webView?.goBack() },
-                            onForward = { if (tab.canGoForward) tab.webView?.goForward() },
-                            onHome = { tab.webView?.loadUrl(TabRegistry.HOME) },
-                            onTabs = { showTabs = true },
-                            onMenu = { scope.launch { drawerState.open() } },
+                    if (tab.isLoading) {
+                        LinearProgressIndicator(
+                            progress = { tab.progress.coerceIn(0, 100) / 100f },
+                            modifier = Modifier.fillMaxWidth().height(2.dp),
                         )
-                        Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+                    } else {
+                        Spacer(Modifier.height(2.dp))
                     }
                 }
-            },
-        ) { pad ->
-            Box(Modifier.padding(pad).fillMaxSize()) {
-                AndroidView(
-                    factory = { ctx -> tab.ensureWebView(ctx, incognito) as WebView },
-                    update = { wv -> (wv.parent as? ViewGroup)?.removeView(wv) },
-                    modifier = Modifier.fillMaxSize(),
-                )
-                // Floating "download this video" button, Brave/YT-Downloader style.
-                AnimatedVisibility(
-                    visible = detectedVideo != null,
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-                ) {
-                    ExtendedFloatingActionButton(
-                        onClick = { showYt = true },
-                        icon = { Icon(AppIcons.Download, "Descargar video") },
-                        text = { Text("Descargar") },
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+            }
+        },
+        bottomBar = {
+            Surface(tonalElevation = 3.dp) {
+                Column {
+                    AnimatedVisibility(visible = findQuery != null) {
+                        FindBar(
+                            onFind = { q -> tab.webView?.findAllAsync(q) },
+                            onClose = {
+                                tab.webView?.clearMatches(); findQuery = null
+                            },
+                            onNext = { tab.webView?.findNext(true) },
+                            onPrev = { tab.webView?.findNext(false) },
+                        )
+                    }
+                    BottomBar(
+                        canGoBack = tab.canGoBack,
+                        canGoForward = tab.canGoForward,
+                        tabCount = TabRegistry.count(),
+                        incognito = incognito,
+                        adblockCount = AdblockEngine.blockedCount,
+                        onBack = { if (tab.canGoBack) tab.webView?.goBack() },
+                        onForward = { if (tab.canGoForward) tab.webView?.goForward() },
+                        onHome = { tab.webView?.loadUrl(TabRegistry.HOME) },
+                        onTabs = { showTabs = true },
+                        onMenu = { showSettings = true },
                     )
+                    Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
                 }
+            }
+        },
+    ) { pad ->
+        Box(Modifier.padding(pad).fillMaxSize()) {
+            AndroidView(
+                factory = { ctx ->
+                    tab.ensureWebView(ctx, incognito).also { wv ->
+                        attachPullToRefresh(wv) { tab.webView?.reload() }
+                    }
+                },
+                update = { wv -> (wv.parent as? ViewGroup)?.removeView(wv) },
+                modifier = Modifier.fillMaxSize(),
+            )
+            // Floating "download this video" button.
+            AnimatedVisibility(
+                visible = detectedVideo != null,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+            ) {
+                ExtendedFloatingActionButton(
+                    onClick = { showYt = true },
+                    icon = { Icon(AppIcons.Download, "Descargar video") },
+                    text = { Text("Descargar") },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                )
             }
         }
     }
@@ -218,6 +213,29 @@ fun BrowserScreen(onOpenExternal: (String) -> Unit) {
             showYt = false
         },
     )
+}
+
+/** Pull-down-to-refresh: triggers reload when the page is scrolled to the top. */
+private fun attachPullToRefresh(wv: WebView, onRefresh: () -> Unit) {
+    var startY = 0f
+    var triggered = false
+    wv.setOnTouchListener { _, ev ->
+        when (ev.action) {
+            android.view.MotionEvent.ACTION_DOWN -> {
+                startY = ev.y; triggered = false
+            }
+            android.view.MotionEvent.ACTION_MOVE -> {
+                if (!triggered && wv.scrollY == 0 && ev.y - startY > 240f) {
+                    triggered = true
+                    onRefresh()
+                }
+            }
+            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                triggered = false
+            }
+        }
+        false
+    }
 }
 
 @Composable
@@ -447,11 +465,11 @@ private fun DownloadsDialog(onDismiss: () -> Unit) {
     )
 }
 
-/** Left-side settings drawer: replaces the old modal settings dialog. */
+/** Full-screen settings & menu page (no swipe drawer). */
 @Composable
-private fun SettingsDrawer(
+private fun SettingsScreen(
     context: Context,
-    onDismiss: () -> Unit,
+    onBack: () -> Unit,
     onOpenDownloads: () -> Unit,
     onOpenTabs: () -> Unit,
     onNewTab: () -> Unit,
@@ -471,16 +489,38 @@ private fun SettingsDrawer(
     var engineOpen by remember { mutableStateOf(false) }
     val incognito by TabRegistry.incognito
 
-    ModalDrawerSheet(Modifier.widthIn(max = 320.dp)) {
-        LazyColumn(Modifier.fillMaxSize()) {
+    Scaffold(
+        topBar = {
+            Surface(tonalElevation = 2.dp) {
+                Column {
+                    Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.Default.Close, "Cerrar menú", modifier = Modifier.size(24.dp))
+                        }
+                        Text(
+                            "NexBrowser",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+        },
+        bottomBar = { Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars)) },
+    ) { pad ->
+        LazyColumn(Modifier.padding(pad).fillMaxSize()) {
             item {
                 Column(Modifier.padding(20.dp)) {
-                    Icon(AppIcons.Compas, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.height(8.dp))
-                    Text("NexBrowser", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Icon(AppIcons.Compas, null, Modifier.size(44.dp), tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(10.dp))
                     Text(
                         "Bloqueados: ${AdblockEngine.blockedCount} anuncios",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -494,7 +534,7 @@ private fun SettingsDrawer(
 
             item { SectionLabel("Privacidad y bloqueo") }
             item {
-                ToggleRow(AppIcons.Block, "Bloqueo agresivo de anuncios", adblock, "Brave-style: red + cosmético + scriptlets") {
+                ToggleRow(AppIcons.Block, "Bloqueo agresivo de anuncios", adblock, "Red + cosmético + scriptlets") {
                     adblock = it; BrowserSettings.updateAdblock(it)
                 }
             }

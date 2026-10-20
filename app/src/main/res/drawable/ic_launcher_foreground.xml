@@ -2,13 +2,50 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <!-- Glossy globe ring -->
-    <path android:fillColor="#FFFFFF"
-        android:pathData="M54,26 C38.54,26 26,38.54 26,54 C26,69.46 38.54,82 54,82 C69.46,82 82,69.46 82,54 C82,38.54 69.46,26 54,26 Z M54,74 C42.95,74 34,65.05 34,54 C34,42.95 42.95,34 54,34 C65.05,34 74,42.95 74,54 C74,65.05 65.05,74 54,74 Z"/>
-    <!-- Horizontal axis -->
-    <path android:fillColor="#FFFFFF"
-        android:pathData="M54,44 C46,44 40,48.48 40,54 C40,59.52 46,64 54,64 C62,64 68,59.52 68,54 C68,48.48 62,44 54,44 Z M54,48 C58,48 64,50.69 64,54 C64,57.31 58,60 54,60 C50,60 44,57.31 44,54 C44,50.69 50,48 54,48 Z"/>
-    <!-- Compass needle (accent) -->
-    <path android:fillColor="#00E5FF"
-        android:pathData="M62.5,45.5 L49,51 L51,58 L58,56 Z M56.5,53.5 L55,55 L54.5,52 Z"/>
+
+    <!-- Globe outer ring with cyan gradient -->
+    <path
+        android:pathData="M54,24 C37.43,24 24,37.43 24,54 C24,70.57 37.43,84 54,84 C70.57,84 84,70.57 84,54 C84,37.43 70.57,24 54,24 Z M54,76 C41.85,76 32,66.15 32,54 C32,41.85 41.85,32 54,32 C66.15,32 76,41.85 76,54 C76,66.15 66.15,76 54,76 Z">
+        <aapt:attr xmlns:aapt="http://schemas.android.com/aapt" name="android:fillColor">
+            <gradient
+                android:startX="24" android:startY="24"
+                android:endX="84" android:endY="84"
+                android:type="linear">
+                <item android:offset="0" android:color="#FFFFFFFF"/>
+                <item android:offset="1" android:color="#FFB8F4FF"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Vertical meridian -->
+    <path
+        android:fillColor="#CCFFFFFF"
+        android:pathData="M54,32 C47,32 41.5,42.4 41.5,54 C41.5,65.6 47,76 54,76 C61,76 66.5,65.6 66.5,54 C66.5,42.4 61,32 54,32 Z M54,36 C58.4,36 62.5,44 62.5,54 C62.5,64 58.4,72 54,72 C49.6,72 45.5,64 45.5,54 C45.5,44 49.6,36 54,36 Z"/>
+
+    <!-- Horizontal equator -->
+    <path
+        android:fillColor="#CCFFFFFF"
+        android:pathData="M32,50 C39,47.6 46.4,46.4 54,46.4 C61.6,46.4 69,47.6 76,50 L76,52.6 C69,50.2 61.6,49 54,49 C46.4,49 39,50.2 32,52.6 Z"/>
+
+    <!-- Upper parallel -->
+    <path
+        android:fillColor="#99FFFFFF"
+        android:pathData="M36.5,42.5 C42.4,40.6 48.1,39.7 54,39.7 C59.9,39.7 65.6,40.6 71.5,42.5 L70.4,44.9 C64.9,43.1 59.6,42.2 54,42.2 C48.4,42.2 43.1,43.1 37.6,44.9 Z"/>
+
+    <!-- Compass needle: north = cyan, south = deep blue -->
+    <path
+        android:pathData="M64,42 L46,50 L54,57.5 L60.5,55 Z">
+        <aapt:attr xmlns:aapt="http://schemas.android.com/aapt" name="android:fillColor">
+            <gradient
+                android:startX="64" android:startY="42"
+                android:endX="54" android:endY="57.5"
+                android:type="linear">
+                <item android:offset="0" android:color="#FF00E5FF"/>
+                <item android:offset="1" android:color="#FF0091EA"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:fillColor="#FF0B3D91"
+        android:pathData="M46,50 L54,57.5 L49,60 Z"/>
 </vector>

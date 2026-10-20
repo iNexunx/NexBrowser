@@ -25,7 +25,7 @@ object BrowserSettings {
         "google" to "https://www.google.com/search?q=",
         "duckduckgo" to "https://duckduckgo.com/?q=",
         "bing" to "https://www.bing.com/search?q=",
-        "brave" to "https://search.brave.com/search?q=",
+        "startpage" to "https://www.startpage.com/sp/search?query=",
     )
 
     fun init(context: Context) {

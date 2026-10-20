@@ -486,4 +486,25 @@ object AppIcons {
             close()
         }
     }
+
+    /** Hamburger menu. */
+    val Menu: ImageVector = vec("Menu") {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(3f, 6f)
+            horizontalLineTo(21f)
+            verticalLineTo(8f)
+            horizontalLineTo(3f)
+            close()
+            moveTo(3f, 11f)
+            horizontalLineTo(21f)
+            verticalLineTo(13f)
+            horizontalLineTo(3f)
+            close()
+            moveTo(3f, 16f)
+            horizontalLineTo(21f)
+            verticalLineTo(18f)
+            horizontalLineTo(3f)
+            close()
+        }
+    }
 }

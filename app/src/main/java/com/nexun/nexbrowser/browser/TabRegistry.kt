@@ -108,22 +108,34 @@ object TabRegistry {
                 handleUrlOverride(tab, view, url ?: return false)
 
             override fun shouldInterceptRequest(view: WebView, req: WebResourceRequest): WebResourceResponse? {
-                val u = req.url?.toString() ?: return null
                 if (!BrowserSettings.adblockEnabled) return null
+                if (req.isForMainFrame) return null
+                val u = req.url?.toString() ?: return null
                 return runCatching {
                     if (AdblockEngine.shouldBlock(u, view.url ?: tab.url)) {
-                        WebResourceResponse("text/plain", "utf-8", "".byteInputStream())
+                        val empty = EMPTY_BODY
+                        WebResourceResponse("text/plain", "utf-8", java.io.ByteArrayInputStream(empty))
                     } else null
                 }.getOrNull()
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                tab.isLoading = true; tab.progress = 0
+                tab.isLoading = true
+                tab.loadFinished = false
+                tab.progress = 0
                 url?.let { tab.url = it }
+                // Inject as early as possible so cosmetics hide ads during render.
+                applyContentBlocking(view, url)
+            }
+
+            override fun onPageCommitVisible(view: WebView?, url: String?) {
+                applyContentBlocking(view, url)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
-                tab.isLoading = false; tab.progress = 100
+                tab.isLoading = false
+                tab.loadFinished = true
+                tab.progress = 100
                 url?.let { tab.url = it }
                 runCatching {
                     tab.canGoBack = view?.canGoBack() ?: false
@@ -137,6 +149,7 @@ object TabRegistry {
             override fun onReceivedError(view: WebView?, req: WebResourceRequest?, err: WebResourceError?) {
                 if (req?.isForMainFrame == true) {
                     tab.isLoading = false
+                    tab.loadFinished = true
                     tab.progress = 100
                 }
             }
@@ -144,11 +157,17 @@ object TabRegistry {
         wv.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 tab.progress = newProgress
-                tab.isLoading = newProgress in 1..99
+                if (newProgress >= 100) {
+                    tab.isLoading = false
+                } else if (!tab.loadFinished) {
+                    tab.isLoading = true
+                }
             }
             override fun onReceivedTitle(view: WebView?, title: String?) { tab.title = title ?: "" }
         }
     }
+
+    private val EMPTY_BODY = ByteArray(0)
 
     private fun applyContentBlocking(view: WebView?, pageUrl: String?) {
         if (view == null) return

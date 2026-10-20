@@ -3,7 +3,7 @@ package com.nexun.nexbrowser.adblock
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Brave-style aggressive ad/tracker blocker.
+ * Aggressive ad/tracker blocker.
  *
  * - Network blocking by exact host + parent-domain suffix (O(1) hash lookups).
  * - Keyword substring rules for path/query-based ads.
@@ -31,7 +31,7 @@ object AdblockEngine {
 
     private var seedLoaded = false
 
-    /** Built-in aggressive seed blocklist (Brave-like categories). */
+    /** Built-in aggressive seed blocklist (Aggressive seed categories). */
     private val SEED_HOSTS = listOf(
         // Google ads / syndication / analytics
         "doubleclick.net", "googlesyndication.com", "googleadservices.com",
@@ -61,7 +61,7 @@ object AdblockEngine {
         "tracking.miui.com", "ads.mopub.com", "cdn.adx1.com",
     )
 
-    /** Generic cosmetic selectors (Brave/EasyList common). */
+    /** Generic cosmetic selectors (common EasyList selectors). */
     private val SEED_GENERIC = listOf(
         "[id^=\"google_ads_\"]", "[id^=\"div-gpt-ad\"]", "[id*=\"google_ads_iframe\"]",
         "ins.adsbygoogle", ".adsbygoogle", "[class*=\"ad-slot\"]", "[class*=\"ad-container\"]",
@@ -150,8 +150,14 @@ object AdblockEngine {
         return false
     }
 
-    private fun hostOf(url: String): String? =
-        runCatching { java.net.URI(url).host?.lowercase() }.getOrNull()
+    private fun hostOf(url: String): String? {
+        runCatching { java.net.URI(url).host?.lowercase()?.takeIf { it.isNotEmpty() } }
+            .getOrNull()?.let { return it }
+        // Fallback for malformed URLs that URI rejects.
+        val s = url.substringAfter("://", "").substringBefore('/').substringBefore('?')
+            .substringBefore('#').substringAfter('@').substringBefore(':').lowercase()
+        return s.takeIf { it.isNotEmpty() && it.contains('.') }
+    }
 
     /**
      * Builds the cosmetic CSS + scriptlet JS injected into a page on load.
