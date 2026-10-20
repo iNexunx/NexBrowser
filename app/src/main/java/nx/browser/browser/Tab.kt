@@ -22,6 +22,12 @@ class Tab(val id: Long) {
     var lastUrl: String = "about:blank"
     /** Set when the renderer process died; UI can surface a message. */
     var rendererCrashed = false
+    /**
+     * When true the tab runs without the JS bridge, media watcher and synthetic
+     * ad responses. Used after a renderer crash so the page can still load on
+     * WebView providers that reject those features.
+     */
+    var safeMode = false
 
     fun onRendererGone(crashed: Boolean) {
         rendererCrashed = crashed

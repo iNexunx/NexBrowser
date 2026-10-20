@@ -79,7 +79,8 @@ object TabRegistry {
         }
     }
 
-    fun closeTab(index: Int) {        if (index !in tabs.indices) return
+    fun closeTab(index: Int) {
+        if (index !in tabs.indices) return
         runCatching { tabs[index].destroy() }
         tabs.removeAt(index)
         if (tabs.isEmpty()) openTab()
@@ -122,7 +123,7 @@ object TabRegistry {
             return
         }
         runCatching {
-            wv.addJavascriptInterface(MediaBridge, "NexMedia")
+            if (!tab.safeMode) wv.addJavascriptInterface(MediaBridge, "NexMedia")
         }
         wv.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest): Boolean =
@@ -133,24 +134,40 @@ object TabRegistry {
                 handleUrlOverride(tab, view, url ?: return false)
 
             override fun shouldInterceptRequest(view: WebView, req: WebResourceRequest): WebResourceResponse? {
+                if (tab.safeMode) return null
                 val pageUrl = view.url ?: tab.url
                 if (!BrowserSettings.shieldsEnabledFor(hostOfSafe(pageUrl))) return null
                 val u = req.url?.toString() ?: return null
                 return runCatching {
-                    if (AdblockEngine.shouldBlock(u, pageUrl)) {
-                        // Never blank out a top-level document; only block subresources.
-                        if (req.isForMainFrame) return@runCatching null
-                        // 1x1 transparent gif for images, empty body otherwise: returns
-                        // fast and prevents layout breaks from refused connections.
-                        val isImage = req.requestHeaders?.get("Accept")?.contains("image") == true ||
-                            Regex("""\.(png|jpe?g|gif|webp|svg|ico)(\?|$)""", RegexOption.IGNORE_CASE)
-                                .containsMatchIn(u)
-                        if (isImage) {
-                            WebResourceResponse("image/gif", null, java.io.ByteArrayInputStream(PIXEL_GIF))
-                        } else {
-                            WebResourceResponse("text/plain", "utf-8", java.io.ByteArrayInputStream(EMPTY_BODY))
-                        }
-                    } else null
+                    if (!AdblockEngine.shouldBlock(u, pageUrl)) return@runCatching null
+                    // Never blank out a top-level document; only block subresources.
+                    if (req.isForMainFrame) return@runCatching null
+                    // Only synthesize responses for safe request types/mimes. Returning a
+                    // bogus body for scripts/XHR/documents is a common cause of renderer
+                    // crashes across WebView providers, so those are passed through.
+                    val accept = req.requestHeaders?.get("Accept") ?: ""
+                    val isImage = accept.contains("image") ||
+                        Regex("""\.(png|jpe?g|gif|webp|svg|ico|bmp)(\?|$)""", RegexOption.IGNORE_CASE)
+                            .containsMatchIn(u)
+                    if (isImage) {
+                        WebResourceResponse("image/gif", "utf-8", java.io.ByteArrayInputStream(PIXEL_GIF))
+                    } else if (accept.contains("text/css")) {
+                        WebResourceResponse("text/css", "utf-8", java.io.ByteArrayInputStream(EMPTY_BODY))
+                    } else if (accept.contains("application/javascript") || accept.contains("text/javascript") ||
+                        Regex("""\.js(\?|$)""", RegexOption.IGNORE_CASE).containsMatchIn(u)
+                    ) {
+                        WebResourceResponse(
+                            "application/javascript", "utf-8",
+                            java.io.ByteArrayInputStream("/* blocked */".toByteArray())
+                        )
+                    } else if (accept.contains("text/html") && !req.isForMainFrame) {
+                        WebResourceResponse("text/html", "utf-8", java.io.ByteArrayInputStream(EMPTY_BODY))
+                    } else {
+                        // Unknown/binary subresource (XHR, fonts, media): return a valid
+                        // empty 204 instead of a malformed body.
+                        WebResourceResponse("text/plain", "utf-8", java.io.ByteArrayInputStream(EMPTY_BODY))
+                            .apply { setStatusCodeAndReasonPhrase(204, "No Content") }
+                    }
                 }.getOrNull()
             }
 
@@ -193,10 +210,11 @@ object TabRegistry {
 
             override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
                 // Returning true prevents Android from killing the whole app when the
-                // renderer dies (incompatible WebView / OOM / vendor bug). We rebuild
-                // the tab's WebView cleanly instead.
+                // renderer dies (incompatible WebView / OOM / vendor bug). Enable safe
+                // mode for this tab (no JS bridge / synthetic responses) and rebuild.
                 val crashed = detail?.didCrash() ?: false
                 tab.onRendererGone(crashed)
+                tab.safeMode = true
                 runCatching {
                     (view?.parent as? android.view.ViewGroup)?.removeView(view)
                     view?.destroy()
@@ -316,11 +334,13 @@ object TabRegistry {
 
     private fun applyMediaWatch(view: WebView?) {
         view ?: return
+        if (current()?.safeMode == true) return
         runCatching { view.evaluateJavascript(MEDIA_WATCH_JS, null) }
     }
 
     private fun applyContentBlocking(view: WebView?, pageUrl: String?) {
         if (view == null) return
+        if (current()?.safeMode == true) return
         if (!BrowserSettings.shieldsEnabledFor(hostOfSafe(pageUrl))) return
         val js = AdblockEngine.cosmeticInjection(pageUrl) ?: return
         runCatching { view.evaluateJavascript(js, null) }
