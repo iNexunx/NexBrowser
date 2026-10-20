@@ -54,7 +54,7 @@ object MediaDownloader {
     private fun startHls(context: Context, candidate: MediaCandidate, cookie: String?) {
         val outName = candidate.fileName.ifBlank { "video.m3u8" }
         val entry = DownloadsRegistry.startEntry(outName)
-        Thread(name = "nex-hls") {
+        kotlin.concurrent.thread(name = "nex-hls", isDaemon = true) {
             runCatching {
                 val playlist = fetchText(candidate.url, candidate.userAgent, candidate.headers, cookie)
                 val segments = parseSegments(playlist, candidate.url)
@@ -86,7 +86,7 @@ object MediaDownloader {
             }.onFailure {
                 DownloadsRegistry.updateEntry(entry, -1, "Error: ${it.message ?: "desconocido"}", "Error")
             }
-        }.apply { isDaemon = true }
+        }
     }
 
     private fun fetchText(
