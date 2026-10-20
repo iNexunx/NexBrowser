@@ -4,7 +4,7 @@
 -keepattributes *Annotation*, Signature, InnerClasses, EnclosingMethod
 
 # Keep app entry points.
--keep class com.nexun.nexbrowser.** { *; }
+-keep class nx.browser.** { *; }
 
 # NewPipeExtractor uses Rhino (JS interpreter) for YouTube signature deciphering.
 -keep class org.mozilla.javascript.** { *; }

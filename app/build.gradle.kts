@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.nexun.nexbrowser"
+    namespace = "nx.browser"
     compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "com.nexun.nexbrowser"
+        applicationId = "nx.browser"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = 1
@@ -86,6 +86,7 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.core)
     implementation(libs.androidx.compose.foundation)
+    implementation(libs.androidx.media)
     implementation(libs.newpipe.extractor)
     testImplementation(libs.junit)
     debugImplementation(libs.androidx.ui.tooling)
