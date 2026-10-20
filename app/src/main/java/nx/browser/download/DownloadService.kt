@@ -54,14 +54,27 @@ class DownloadService : Service() {
         val ua = intent.getStringExtra(EXTRA_UA)
         val cookie = intent.getStringExtra(EXTRA_COOKIE)
         val referer = intent.getStringExtra(EXTRA_REFERER)
+        val extraHeaders = intent.getStringArrayListExtra(EXTRA_HEADERS)?.let { flat ->
+            // Flat list of alternating key/value pairs, replayed as request headers.
+            flat.chunked(2).mapNotNull { if (it.size == 2) it[0] to it[1] else null }.toMap()
+        } ?: emptyMap()
         startForegroundCompat(buildNotification(name, -1))
         if (worker == null) {
-            worker = thread(name = "nex-download") { runDownload(url, name, ua, cookie, referer) }
+            worker = thread(name = "nex-download") {
+                runDownload(url, name, ua, cookie, referer, extraHeaders)
+            }
         }
         return START_STICKY
     }
 
-    private fun runDownload(url: String, name: String, ua: String?, cookie: String?, referer: String?) {
+    private fun runDownload(
+        url: String,
+        name: String,
+        ua: String?,
+        cookie: String?,
+        referer: String?,
+        extraHeaders: Map<String, String>,
+    ) {
         val entry = DownloadsRegistry.startEntry(name)
         var conn: HttpURLConnection? = null
         var out: FileOutputStream? = null
@@ -75,6 +88,11 @@ class DownloadService : Service() {
                 ua?.takeIf { it.isNotBlank() }?.let { setRequestProperty("User-Agent", it) }
                 cookie?.takeIf { it.isNotBlank() }?.let { setRequestProperty("Cookie", it) }
                 referer?.takeIf { it.isNotBlank() }?.let { setRequestProperty("Referer", it) }
+                // Replay the headers captured from the browser request (Aster-style).
+                for ((k, v) in extraHeaders) {
+                    if (k.equals("range", true) || k.equals("accept-encoding", true)) continue
+                    runCatching { setRequestProperty(k, v) }
+                }
                 setRequestProperty("Accept-Encoding", "identity")
                 if (existing > 0) setRequestProperty("Range", "bytes=$existing-")
             }
@@ -229,6 +247,7 @@ class DownloadService : Service() {
         const val EXTRA_UA = "ua"
         const val EXTRA_COOKIE = "cookie"
         const val EXTRA_REFERER = "referer"
+        const val EXTRA_HEADERS = "headers"
         private const val CHANNEL_ID = "nexbrowser_download"
         private const val NOTIF_ID = 8001
 
@@ -239,6 +258,7 @@ class DownloadService : Service() {
             ua: String?,
             cookie: String?,
             referer: String?,
+            headers: Map<String, String> = emptyMap(),
         ) {
             val i = Intent(context, DownloadService::class.java)
                 .setAction(ACTION_START)
@@ -247,6 +267,9 @@ class DownloadService : Service() {
                 .putExtra(EXTRA_UA, ua)
                 .putExtra(EXTRA_COOKIE, cookie)
                 .putExtra(EXTRA_REFERER, referer)
+            if (headers.isNotEmpty()) {
+                i.putStringArrayListExtra(EXTRA_HEADERS, ArrayList(headers.flatMap { listOf(it.key, it.value) }))
+            }
             runCatching {
                 if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(i)
                 else context.startService(i)

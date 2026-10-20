@@ -46,6 +46,8 @@ import nx.browser.browser.BrowserSettings
 import nx.browser.browser.TabRegistry
 import nx.browser.download.DownloadEntry
 import nx.browser.download.DownloadsRegistry
+import nx.browser.media.capture.MediaCaptureRepository
+import nx.browser.media.capture.MediaDownloader
 import nx.browser.util.Url
 import nx.browser.youtube.YouTubeExtractor
 import kotlinx.coroutines.launch
@@ -59,6 +61,7 @@ fun BrowserScreen(onOpenExternal: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     val incognito by TabRegistry.incognito
     val detectedVideo by TabRegistry.detectedVideoUrl
+    val mediaCandidates = MediaCaptureRepository.candidates
     val webViewAvailable by TabRegistry.webViewAvailable
 
     var editing by remember { mutableStateOf(false) }
@@ -66,6 +69,7 @@ fun BrowserScreen(onOpenExternal: (String) -> Unit) {
     var showTabs by remember { mutableStateOf(false) }
     var showDownloads by remember { mutableStateOf(false) }
     var showYt by remember { mutableStateOf(false) }
+    var showMedia by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var findQuery by remember { mutableStateOf<String?>(null) }
     val longPress by TabRegistry.longPress
@@ -73,8 +77,9 @@ fun BrowserScreen(onOpenExternal: (String) -> Unit) {
     val secure = Url.isSecure(tab.url)
 
     // System / edge back gesture: navigate web history, then close overlays.
-    BackHandler(enabled = showSettings || showTabs || showDownloads || showYt || editing) {
+    BackHandler(enabled = showSettings || showTabs || showDownloads || showYt || showMedia || editing) {
         when {
+            showMedia -> showMedia = false
             showYt -> showYt = false
             showDownloads -> showDownloads = false
             showTabs -> showTabs = false
@@ -82,7 +87,7 @@ fun BrowserScreen(onOpenExternal: (String) -> Unit) {
             showSettings -> showSettings = false
         }
     }
-    BackHandler(enabled = !(showSettings || showTabs || showDownloads || showYt || editing)) {
+    BackHandler(enabled = !(showSettings || showTabs || showDownloads || showYt || showMedia || editing)) {
         val wv = tab.webView
         if (wv != null && wv.canGoBack()) wv.goBack()
         else if (wv != null && tab.url != TabRegistry.HOME) wv.loadUrl(TabRegistry.HOME)
@@ -248,15 +253,24 @@ fun BrowserScreen(onOpenExternal: (String) -> Unit) {
                     }
                 }
             }
-            // Floating "download this video" button.
+            // Floating "download this video" button. Prefers captured media
+            // candidates (Aster-style sniffer); falls back to the detected video.
+            val hasMedia = detectedVideo != null || mediaCandidates.isNotEmpty()
             AnimatedVisibility(
-                visible = detectedVideo != null,
+                visible = hasMedia,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
             ) {
                 ExtendedFloatingActionButton(
-                    onClick = { showYt = true },
+                    onClick = {
+                        if (mediaCandidates.isNotEmpty()) showMedia = true else showYt = true
+                    },
                     icon = { Icon(AppIcons.Download, "Descargar video") },
-                    text = { Text("Descargar") },
+                    text = {
+                        Text(
+                            if (mediaCandidates.isNotEmpty())
+                                "Ver videos (${mediaCandidates.size})" else "Descargar"
+                        )
+                    },
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                 )
             }
@@ -271,6 +285,15 @@ fun BrowserScreen(onOpenExternal: (String) -> Unit) {
         )
     }
     if (showDownloads) DownloadsDialog { showDownloads = false }
+    if (showMedia) MediaSheetDialog(
+        candidates = mediaCandidates,
+        onDismiss = { showMedia = false },
+        onDownload = { candidate ->
+            MediaDownloader.download(context, candidate)
+            showMedia = false
+        },
+        onYoutube = { showMedia = false; showYt = true },
+    )
     if (showYt) YouTubeDialog(
         url = detectedVideo ?: tab.url,
         onDismiss = { showYt = false },
@@ -673,6 +696,68 @@ private fun DownloadsDialog(onDismiss: () -> Unit) {
         dismissButton = {
             if (items.any { it.state == "Completado" || it.state.startsWith("Error") })
                 TextButton(onClick = { DownloadsRegistry.clearFinished() }) { Text("Limpiar") }
+        },
+    )
+}
+
+/**
+ * Aster-style "download media" sheet: lists every video resource sniffed from
+ * this tab's network traffic, with size/type and a one-tap download.
+ */
+@Composable
+private fun MediaSheetDialog(
+    candidates: List<nx.browser.media.capture.MediaCandidate>,
+    onDismiss: () -> Unit,
+    onDownload: (nx.browser.media.capture.MediaCandidate) -> Unit,
+    onYoutube: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(AppIcons.Download, null) },
+        title = { Text(if (candidates.isEmpty()) "Video" else "Videos en esta página") },
+        text = {
+            if (candidates.isEmpty()) {
+                Text("No se detectaron videos descargables en esta página.")
+            } else {
+                LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    items(candidates.size) { i ->
+                        val c = candidates[i]
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    c.fileName.take(48),
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                val kind = when (c.type) {
+                                    nx.browser.media.capture.MediaType.HLS -> "HLS"
+                                    nx.browser.media.capture.MediaType.DIRECT_VIDEO -> "Video"
+                                    nx.browser.media.capture.MediaType.PAGE_VIDEO -> "Página"
+                                }
+                                Text(
+                                    "$kind · ${c.mimeType}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            IconButton(onClick = { onDownload(c) }) {
+                                Icon(AppIcons.Download, "Descargar", Modifier.size(20.dp))
+                            }
+                        }
+                        HorizontalDivider()
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } },
+        dismissButton = {
+            TextButton(onClick = onYoutube) { Text("Descargar de YouTube") }
         },
     )
 }

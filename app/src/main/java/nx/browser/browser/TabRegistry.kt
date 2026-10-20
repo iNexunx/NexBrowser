@@ -62,6 +62,7 @@ object TabRegistry {
             tab.webView?.loadUrl(if (url == "about:blank") HOME else url)
         }
         if (activeIndex.value > tabs.lastIndex) activeIndex.value = tabs.lastIndex
+        nx.browser.media.capture.MediaCaptureRepository.setActiveTab(activeTabId())
     }
 
     /**
@@ -81,13 +82,19 @@ object TabRegistry {
 
     fun closeTab(index: Int) {
         if (index !in tabs.indices) return
+        val closing = tabs[index].id.toString()
         runCatching { tabs[index].destroy() }
         tabs.removeAt(index)
+        nx.browser.media.capture.MediaCaptureRepository.clear(closing)
         if (tabs.isEmpty()) openTab()
         activeIndex.value = activeIndex.value.coerceIn(0, tabs.lastIndex)
+        nx.browser.media.capture.MediaCaptureRepository.setActiveTab(activeTabId())
     }
 
-    fun select(index: Int) { activeIndex.value = index.coerceIn(0, tabs.lastIndex) }
+    fun select(index: Int) {
+        activeIndex.value = index.coerceIn(0, tabs.lastIndex)
+        nx.browser.media.capture.MediaCaptureRepository.setActiveTab(activeTabId())
+    }
     fun count(): Int = tabs.size
     fun tabsSnapshot(): List<Tab> = tabs.toList()
 
@@ -96,6 +103,7 @@ object TabRegistry {
         incognito.value = on
         tabs.forEach { runCatching { it.destroy() } }
         tabs.clear()
+        nx.browser.media.capture.MediaCaptureRepository.retainTabs(emptySet())
         openTab()
     }
 
@@ -140,8 +148,13 @@ object TabRegistry {
                 // "A WebView method was called on thread 'ThreadPoolForeg'". Use the
                 // tab's cached URL instead.
                 val pageUrl = tab.url.ifBlank { tab.lastUrl }
-                if (!BrowserSettings.shieldsEnabledFor(hostOfSafe(pageUrl))) return null
                 val u = req.url?.toString() ?: return null
+                // Sniff media subresources (Aster-style) before any blocking, so the
+                // capture never sees URLs that adblock turns into synthetic responses.
+                runCatching {
+                    captureMedia(tab, req, u, pageUrl)
+                }
+                if (!BrowserSettings.shieldsEnabledFor(hostOfSafe(pageUrl))) return null
                 return runCatching {
                     if (!AdblockEngine.shouldBlock(u, pageUrl)) return@runCatching null
                     // Never blank out a top-level document; only block subresources.
@@ -181,6 +194,7 @@ object TabRegistry {
                 tab.progress = 0
                 tab.rendererCrashed = false
                 url?.let { tab.url = it; tab.lastUrl = it }
+                url?.let { nx.browser.media.capture.MediaCaptureRepository.updatePage(tab.id.toString(), it) }
                 // Inject as early as possible so cosmetics hide ads during render.
                 applyContentBlocking(view, url)
             }
@@ -359,6 +373,45 @@ object TabRegistry {
         val js = AdblockEngine.cosmeticInjection(pageUrl) ?: return
         runCatching { view.evaluateJavascript(js, null) }
     }
+
+    /**
+     * Sniffs a network request for media (video) the same way Aster does, and
+     * records it in [nx.browser.media.capture.MediaCaptureRepository] for the tab.
+     * Runs on the interceptor's background thread, so it must not touch the WebView.
+     */
+    private fun captureMedia(tab: Tab, req: WebResourceRequest, url: String, pageUrl: String) {
+        if (url.isEmpty()) return
+        val headers = req.requestHeaders ?: emptyMap()
+        val mime = headers.entries
+            .firstOrNull { it.key.equals("Content-Type", true) || it.key.equals("Accept", true) }
+            ?.value
+        // Accept header may carry several types; keep only a media-looking one.
+        val hinted = mime?.substringBefore(',')?.substringBefore(';')?.trim()
+        val type = nx.browser.media.capture.MediaClassifier.classify(url, hinted) ?: return
+        val ua = headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value
+            ?: headers.entries.firstOrNull { it.key.equals("user-agent", true) }?.value
+            ?: ""
+        val candidate = nx.browser.media.capture.MediaCaptureRepository.createCandidate(
+            url = url,
+            mime = hinted,
+            pageUrl = pageUrl,
+            frameUrl = pageUrl,
+            contentLength = -1L,
+            userAgent = ua,
+            headers = headers,
+        ) ?: return
+        // PAGE_VIDEO only makes sense for the social sites Aster whitelists.
+        if (type == nx.browser.media.capture.MediaType.PAGE_VIDEO &&
+            !nx.browser.media.capture.MediaClassifier.isSupportedPageVideoUrl(url)
+        ) {
+            return
+        }
+        val tabId = tab.id.toString()
+        nx.browser.media.capture.MediaCaptureRepository.setActiveTab(activeTabId())
+        nx.browser.media.capture.MediaCaptureRepository.add(tabId, candidate)
+    }
+
+    private fun activeTabId(): String = (current()?.id ?: 0L).toString()
 
     /** Detects a playable video on the page and exposes it to the UI. */
     private fun detectPlayableVideo(view: WebView?, pageUrl: String?) {

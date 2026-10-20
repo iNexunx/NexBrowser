@@ -29,10 +29,21 @@ class AdblockEngineTest {
     }
 
     @Test
-    fun blocksAdPathsOnFirstPartyHost() {
+    fun neverBlocksSameHostAsPage() {
+        // First-party resources are functional (site CSS/JS/ads under its own host);
+        // blocking them was what produced "sin conexión". They must pass through.
         val page = "https://site.example.com/"
-        assertTrue(AdblockEngine.shouldBlock("https://site.example.com/ads/banner.png", page))
-        assertTrue(AdblockEngine.shouldBlock("https://site.example.com/tracking/pixel.gif", page))
+        assertFalse(AdblockEngine.shouldBlock("https://site.example.com/ads/banner.png", page))
+        assertFalse(AdblockEngine.shouldBlock("https://www.site.example.com/tracking/pixel.gif", page))
+        assertFalse(AdblockEngine.shouldBlock("https://site.example.com/pagead/loader.js", page))
+    }
+
+    @Test
+    fun blocksOnlyClearAdServersThirdParty() {
+        val page = "https://site.example.com/"
+        assertTrue(AdblockEngine.shouldBlock("https://adserver.example.net/adset.js", page))
+        assertTrue(AdblockEngine.shouldBlock("https://cdn.doubleclick.net/x", page))
+        assertTrue(AdblockEngine.shouldBlock("https://x.com/pagead/js/adsbygoogle.js", page))
     }
 
     @Test
@@ -41,6 +52,8 @@ class AdblockEngineTest {
         assertFalse(AdblockEngine.shouldBlock("https://site.example.com/style.css", page))
         assertFalse(AdblockEngine.shouldBlock("https://cdn.example.com/app.js", page))
         assertFalse(AdblockEngine.shouldBlock("https://site.example.com/products/123", page))
+        // Generic analytics-like third-party assets must NOT be path-blocked anymore.
+        assertFalse(AdblockEngine.shouldBlock("https://cdn.example.com/assets/analytics.js", page))
     }
 
     @Test

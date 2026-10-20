@@ -144,6 +144,11 @@ object AdblockEngine {
         if (scheme != "http" && scheme != "https") return false
         val host = hostOf(url) ?: return false
         if (isExcepted(host)) return false
+        val pageHost = pageUrl?.let { hostOf(it) }
+        // Never block a request to the same host as the page itself: those are
+        // almost always functional resources and blocking them shows "no
+        // connection" errors on otherwise fine sites.
+        if (pageHost != null && (host == pageHost || host.endsWith(".$pageHost"))) return false
         // 1) Known ad/tracker host (exact or parent-domain).
         if (matchesHost(host)) { blockedCount++; return true }
         // 2) Keyword rules (path/query substrings learned from filter lists).
@@ -153,18 +158,14 @@ object AdblockEngine {
                 if (lower.contains(k)) { blockedCount++; return true }
             }
         }
-        // 3) Aggressive path heuristics on ANY host (Brave/Via style), except the
-        //    top-level document itself.
-        val pageHost = pageUrl?.let { hostOf(it) }
-        val isMainDoc = pageHost != null && host == pageHost &&
-            url.substringBefore('?').substringBefore('#').trimEnd('/') ==
-            pageUrl?.substringBefore('?')?.substringBefore('#')?.trimEnd('/')
-        if (!isMainDoc && matchesAdPath(url)) { blockedCount++; return true }
+        // 3) Conservative path filter: only clearly-advertising path segments on a
+        //    third-party host, and never when it looks like a normal asset.
+        if (matchesAdPath(url)) { blockedCount++; return true }
         return false
     }
 
     private val AD_PATH = Regex(
-        """/(ad|ads|adv|advert|adserver|adservice|banner|popup|popunder|sponsor|promo|track|tracking|analytics|pixel|beacon|impression)[/_\-.]""",
+        """/(adserver|adservice|adsense|doubleclick|googlesyndication|advert)[/_\-.]""",
         RegexOption.IGNORE_CASE
     )
 
@@ -172,10 +173,8 @@ object AdblockEngine {
         val noQuery = url.substringBefore('?')
         if (AD_PATH.containsMatchIn(noQuery)) return true
         val lower = url.lowercase()
-        return lower.contains("ad_type=") || lower.contains("ad_slot=") ||
-            lower.contains("utm_") && lower.contains("ads") ||
-            lower.contains("/pagead/") || lower.contains("/gampad/") ||
-            lower.contains("googlesyndication") || lower.contains("doubleclick")
+        return lower.contains("/pagead/") || lower.contains("/gampad/") ||
+            lower.contains("googlesyndication.com") || lower.contains("doubleclick.net")
     }
 
     private fun matchesHost(host: String): Boolean {
