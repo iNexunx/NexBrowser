@@ -1,9 +1,7 @@
 package com.nexun.nexbrowser.ui
 
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Context
-import android.content.Intent
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.compose.animation.AnimatedVisibility
@@ -56,153 +54,144 @@ fun BrowserScreen(onOpenExternal: (String) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val incognito by TabRegistry.incognito
+    val detectedVideo by TabRegistry.detectedVideoUrl
 
     var editing by remember { mutableStateOf(false) }
     var omnibox by remember { mutableStateOf("") }
     var showTabs by remember { mutableStateOf(false) }
-    var showMenu by remember { mutableStateOf(false) }
-    var showSettings by remember { mutableStateOf(false) }
     var showDownloads by remember { mutableStateOf(false) }
     var showYt by remember { mutableStateOf(false) }
     var findQuery by remember { mutableStateOf<String?>(null) }
 
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+
     val secure = Url.isSecure(tab.url)
 
-    Scaffold(
-        topBar = {
-            Surface(tonalElevation = 2.dp) {
-                Column {
-                    Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
-                    if (editing) {
-                        OmniEditField(
-                            value = omnibox,
-                            onValueChange = { omnibox = it },
-                            onSubmit = {
-                                tab.webView?.loadUrl(Url.normalize(omnibox)); editing = false
-                            },
-                            onCancel = { editing = false },
-                        )
-                    } else {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            OmniboxBar(
-                                url = tab.url,
-                                secure = secure,
-                                incognito = incognito,
-                                title = tab.title,
-                                modifier = Modifier.weight(1f),
-                                onClick = {
-                                    omnibox = if (tab.url == TabRegistry.HOME) "" else tab.url
-                                    editing = true
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            SettingsDrawer(
+                context = context,
+                onDismiss = { scope.launch { drawerState.close() } },
+                onOpenDownloads = {
+                    scope.launch { drawerState.close() }
+                    showDownloads = true
+                },
+                onOpenTabs = {
+                    scope.launch { drawerState.close() }
+                    showTabs = true
+                },
+                onNewTab = {
+                    scope.launch { drawerState.close() }
+                    TabRegistry.openTab()
+                },
+                onToggleIncognito = {
+                    scope.launch { drawerState.close() }
+                    TabRegistry.setIncognito(!incognito)
+                },
+                onOpenExternal = { onOpenExternal(tab.url) },
+            )
+        },
+    ) {
+        Scaffold(
+            topBar = {
+                Surface(tonalElevation = 2.dp) {
+                    Column {
+                        Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+                        if (editing) {
+                            OmniEditField(
+                                value = omnibox,
+                                onValueChange = { omnibox = it },
+                                onSubmit = {
+                                    tab.webView?.loadUrl(Url.normalize(omnibox)); editing = false
                                 },
+                                onCancel = { editing = false },
                             )
-                            if (tab.isLoading) {
-                                IconButton(onClick = { tab.webView?.stopLoading() }) {
-                                    Icon(Icons.Default.Close, "Detener", modifier = Modifier.size(20.dp))
-                                }
-                            } else {
-                                IconButton(onClick = { tab.webView?.reload() }) {
-                                    Icon(Icons.Default.Refresh, "Recargar", modifier = Modifier.size(22.dp))
+                        } else {
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                OmniboxBar(
+                                    url = tab.url,
+                                    secure = secure,
+                                    incognito = incognito,
+                                    title = tab.title,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = {
+                                        omnibox = if (tab.url == TabRegistry.HOME) "" else tab.url
+                                        editing = true
+                                    },
+                                )
+                                if (tab.isLoading) {
+                                    IconButton(onClick = { tab.webView?.stopLoading() }) {
+                                        Icon(Icons.Default.Close, "Detener", modifier = Modifier.size(20.dp))
+                                    }
+                                } else {
+                                    IconButton(onClick = { tab.webView?.reload() }) {
+                                        Icon(Icons.Default.Refresh, "Recargar", modifier = Modifier.size(22.dp))
+                                    }
                                 }
                             }
                         }
-                    }
-                    if (tab.isLoading) {
-                        LinearProgressIndicator(
-                            progress = { tab.progress.coerceIn(0, 100) / 100f },
-                            modifier = Modifier.fillMaxWidth().height(2.dp),
-                        )
+                        if (tab.isLoading) {
+                            LinearProgressIndicator(
+                                progress = { tab.progress.coerceIn(0, 100) / 100f },
+                                modifier = Modifier.fillMaxWidth().height(2.dp),
+                            )
+                        }
                     }
                 }
-            }
-        },
-        bottomBar = {
-            Surface(tonalElevation = 3.dp) {
-                Column {
-                    AnimatedVisibility(visible = findQuery != null) {
-                        FindBar(
-                            onFind = { q -> tab.webView?.findAllAsync(q) },
-                            onClose = {
-                                tab.webView?.clearMatches(); findQuery = null
-                            },
-                            onNext = { tab.webView?.findNext(true) },
-                            onPrev = { tab.webView?.findNext(false) },
-                        )
-                    }
-                    BottomBar(
-                        canGoBack = tab.canGoBack,
-                        canGoForward = tab.canGoForward,
-                        tabCount = TabRegistry.count(),
-                        incognito = incognito,
-                        onBack = { if (tab.canGoBack) tab.webView?.goBack() },
-                        onForward = { if (tab.canGoForward) tab.webView?.goForward() },
-                        onHome = { tab.webView?.loadUrl(TabRegistry.HOME) },
-                        onTabs = { showTabs = true },
-                        onMenu = { showMenu = true },
-                    )
-                    Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
-                }
-            }
-        },
-    ) { pad ->
-        Box(Modifier.padding(pad).fillMaxSize()) {
-            AndroidView(
-                factory = { ctx -> tab.ensureWebView(ctx, incognito) as WebView },
-                update = { wv -> (wv.parent as? ViewGroup)?.removeView(wv) },
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-    }
-
-    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-        MenuItem(Icons.Default.Add, "Nueva pestaña") {
-            TabRegistry.openTab(); showMenu = false
-        }
-        MenuItem(AppIcons.Block, "Descargar video YouTube") {
-            showMenu = false; showYt = true
-        }
-        MenuItem(AppIcons.Download, "Descargas (${DownloadsRegistry.items.size})") {
-            showMenu = false; showDownloads = true
-        }
-        MenuItem(
-            if (incognito) AppIcons.LockOpen else Icons.Default.Lock,
-            if (incognito) "Salir de incógnito" else "Nueva pestaña incógnito",
-        ) {
-            TabRegistry.setIncognito(!incognito); showMenu = false
-        }
-        MenuItem(AppIcons.FindInPage, "Buscar en la página") {
-            showMenu = false; findQuery = ""
-        }
-        MenuItem(AppIcons.RestartAlt, "Modo escritorio") {
-            BrowserSettings.updateDesktopMode(!BrowserSettings.desktopMode)
-            TabRegistry.current()?.applySettings()
-            showMenu = false
-        }
-        MenuItem(
-            if (BrowserSettings.darkMode == true) AppIcons.LightMode else AppIcons.DarkMode,
-            when (BrowserSettings.darkMode) {
-                true -> "Tema claro"
-                false -> "Tema del sistema"
-                else -> "Tema oscuro"
             },
-        ) {
-            BrowserSettings.updateDarkMode(
-                when (BrowserSettings.darkMode) {
-                    true -> false
-                    false -> null
-                    else -> true
+            bottomBar = {
+                Surface(tonalElevation = 3.dp) {
+                    Column {
+                        AnimatedVisibility(visible = findQuery != null) {
+                            FindBar(
+                                onFind = { q -> tab.webView?.findAllAsync(q) },
+                                onClose = {
+                                    tab.webView?.clearMatches(); findQuery = null
+                                },
+                                onNext = { tab.webView?.findNext(true) },
+                                onPrev = { tab.webView?.findNext(false) },
+                            )
+                        }
+                        BottomBar(
+                            canGoBack = tab.canGoBack,
+                            canGoForward = tab.canGoForward,
+                            tabCount = TabRegistry.count(),
+                            incognito = incognito,
+                            adblockCount = AdblockEngine.blockedCount,
+                            onBack = { if (tab.canGoBack) tab.webView?.goBack() },
+                            onForward = { if (tab.canGoForward) tab.webView?.goForward() },
+                            onHome = { tab.webView?.loadUrl(TabRegistry.HOME) },
+                            onTabs = { showTabs = true },
+                            onMenu = { scope.launch { drawerState.open() } },
+                        )
+                        Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+                    }
                 }
-            )
-            showMenu = false
-        }
-        HorizontalDivider()
-        MenuItem(Icons.Default.Settings, "Ajustes") {
-            showMenu = false; showSettings = true
-        }
-        MenuItem(Icons.Default.Share, "Compartir / abrir externo") {
-            onOpenExternal(tab.url); showMenu = false
+            },
+        ) { pad ->
+            Box(Modifier.padding(pad).fillMaxSize()) {
+                AndroidView(
+                    factory = { ctx -> tab.ensureWebView(ctx, incognito) as WebView },
+                    update = { wv -> (wv.parent as? ViewGroup)?.removeView(wv) },
+                    modifier = Modifier.fillMaxSize(),
+                )
+                // Floating "download this video" button, Brave/YT-Downloader style.
+                AnimatedVisibility(
+                    visible = detectedVideo != null,
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                ) {
+                    ExtendedFloatingActionButton(
+                        onClick = { showYt = true },
+                        icon = { Icon(AppIcons.Download, "Descargar video") },
+                        text = { Text("Descargar") },
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    )
+                }
+            }
         }
     }
 
@@ -215,15 +204,11 @@ fun BrowserScreen(onOpenExternal: (String) -> Unit) {
         )
     }
     if (showDownloads) DownloadsDialog { showDownloads = false }
-    if (showSettings) SettingsDialog(
-        context = context,
-        onDismiss = { showSettings = false },
-    )
     if (showYt) YouTubeDialog(
-        url = tab.url,
+        url = detectedVideo ?: tab.url,
         onDismiss = { showYt = false },
         onDownload = { opt, name ->
-            val label = (if (opt.isAudio) "Audio " else "Video ") + opt.quality
+            val label = opt.quality
             DownloadsRegistry.add(DownloadEntry(name, "Descargando", label))
             scope.launch {
                 runCatching { YouTubeExtractor.download(context, opt, name) }
@@ -255,7 +240,7 @@ private fun OmniboxBar(
         ) {
             Icon(
                 when {
-                    incognito -> Icons.Default.Lock
+                    incognito -> AppIcons.VisibilityOff
                     secure -> Icons.Default.Lock
                     else -> Icons.Default.Warning
                 },
@@ -320,6 +305,7 @@ private fun BottomBar(
     canGoForward: Boolean,
     tabCount: Int,
     incognito: Boolean,
+    adblockCount: Long,
     onBack: () -> Unit,
     onForward: () -> Unit,
     onHome: () -> Unit,
@@ -346,7 +332,15 @@ private fun BottomBar(
                 modifier = Modifier.align(Alignment.TopEnd),
             ) { Text("$tabCount") }
         }
-        IconButton(onClick = onMenu) { Icon(Icons.Default.MoreVert, "Menú") }
+        Box {
+            IconButton(onClick = onMenu) { Icon(Icons.Default.MoreVert, "Menú") }
+            if (adblockCount > 0) {
+                Badge(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.align(Alignment.TopEnd),
+                ) { Text(if (adblockCount > 999) "999+" else "$adblockCount") }
+            }
+        }
     }
 }
 
@@ -453,8 +447,17 @@ private fun DownloadsDialog(onDismiss: () -> Unit) {
     )
 }
 
+/** Left-side settings drawer: replaces the old modal settings dialog. */
 @Composable
-private fun SettingsDialog(context: Context, onDismiss: () -> Unit) {
+private fun SettingsDrawer(
+    context: Context,
+    onDismiss: () -> Unit,
+    onOpenDownloads: () -> Unit,
+    onOpenTabs: () -> Unit,
+    onNewTab: () -> Unit,
+    onToggleIncognito: () -> Unit,
+    onOpenExternal: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     var js by remember { mutableStateOf(BrowserSettings.javaScriptEnabled) }
     var https by remember { mutableStateOf(BrowserSettings.httpsOnly) }
@@ -466,52 +469,132 @@ private fun SettingsDialog(context: Context, onDismiss: () -> Unit) {
     var engine by remember { mutableStateOf(BrowserSettings.searchEngine) }
     var clearing by remember { mutableStateOf(false) }
     var engineOpen by remember { mutableStateOf(false) }
+    val incognito by TabRegistry.incognito
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.Settings, null) },
-        title = { Text("Ajustes y privacidad") },
-        text = {
-            LazyColumn(Modifier.heightIn(max = 480.dp)) {
-                item { SectionLabel("Privacidad") }
-                item { ToggleRow(AppIcons.Block, "Bloqueo de anuncios", adblock, "Filtra ads y rastreadores") { adblock = it; BrowserSettings.updateAdblock(it) } }
-                item { ToggleRow(Icons.Default.Lock, "Solo HTTPS", https, "Fuerza conexiones seguras") { https = it; BrowserSettings.updateHttpsOnly(it) } }
-                item { ToggleRow(AppIcons.Cookie, "Bloquear cookies de terceros", thirdPc, null) { thirdPc = it; BrowserSettings.updateBlockThirdPartyCookies(it) } }
-                item { ToggleRow(AppIcons.VisibilityOff, "Do Not Track", dnt, "Pide a los sitios no rastrear") { dnt = it; BrowserSettings.updateDoNotTrack(it) } }
-                item { SectionLabel("Contenido") }
-                item { ToggleRow(AppIcons.Code, "JavaScript", js, "Desactivar puede romper sitios") { js = it; BrowserSettings.updateJavaScript(it); TabRegistry.current()?.applySettings() } }
-                item { ToggleRow(AppIcons.Image, "Cargar imágenes", !images, "Desactivar ahorra datos") { images = !it; BrowserSettings.updateImageBlocking(images); TabRegistry.current()?.applySettings() } }
-                item { ToggleRow(AppIcons.DesktopWindows, "Modo escritorio", desktop, "Sitio de escritorio por defecto") { desktop = it; BrowserSettings.updateDesktopMode(it); TabRegistry.current()?.applySettings() } }
-                item { SectionLabel("Búsqueda") }
-                item {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Default.Search, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.width(14.dp))
-                        Text("Motor de búsqueda", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                        Box {
-                            TextButton(onClick = { engineOpen = true }) {
-                                Text(engine.replaceFirstChar { it.uppercase() })
+    ModalDrawerSheet(Modifier.widthIn(max = 320.dp)) {
+        LazyColumn(Modifier.fillMaxSize()) {
+            item {
+                Column(Modifier.padding(20.dp)) {
+                    Icon(AppIcons.Compas, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(8.dp))
+                    Text("NexBrowser", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Bloqueados: ${AdblockEngine.blockedCount} anuncios",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            item { DrawerItem(Icons.Default.Add, "Nueva pestaña", onNewTab) }
+            item { DrawerItem(AppIcons.Tab, "Pestañas (${TabRegistry.count()})", onOpenTabs) }
+            item { DrawerItem(AppIcons.Download, "Descargas (${DownloadsRegistry.items.size})", onOpenDownloads) }
+            item { DrawerItem(AppIcons.LockOpen, if (incognito) "Salir de incógnito" else "Incógnito", onToggleIncognito) }
+            item { DrawerItem(Icons.Default.Share, "Compartir página", onOpenExternal) }
+            item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+
+            item { SectionLabel("Privacidad y bloqueo") }
+            item {
+                ToggleRow(AppIcons.Block, "Bloqueo agresivo de anuncios", adblock, "Brave-style: red + cosmético + scriptlets") {
+                    adblock = it; BrowserSettings.updateAdblock(it)
+                }
+            }
+            item {
+                TextButton(
+                    onClick = { scope.launch { clearing = true; runCatching { FilterListRepo.updateIfStale(true) }; clearing = false } },
+                    modifier = Modifier.padding(start = 8.dp),
+                ) {
+                    Icon(AppIcons.RefreshIcon, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                    Text(if (clearing) "Actualizando…" else "Actualizar filtros (${AdblockEngine.ruleCount()} reglas)")
+                }
+            }
+            item { ToggleRow(Icons.Default.Lock, "Solo HTTPS", https, "Fuerza conexiones seguras") { https = it; BrowserSettings.updateHttpsOnly(it) } }
+            item { ToggleRow(AppIcons.Cookie, "Bloquear cookies de terceros", thirdPc, null) { thirdPc = it; BrowserSettings.updateBlockThirdPartyCookies(it) } }
+            item { ToggleRow(AppIcons.VisibilityOff, "Do Not Track", dnt, "Pide a los sitios no rastrear") { dnt = it; BrowserSettings.updateDoNotTrack(it) } }
+
+            item { SectionLabel("Contenido") }
+            item { ToggleRow(AppIcons.Code, "JavaScript", js, "Desactivar puede romper sitios") { js = it; BrowserSettings.updateJavaScript(it); TabRegistry.current()?.applySettings() } }
+            item { ToggleRow(AppIcons.Image, "Cargar imágenes", !images, "Desactivar ahorra datos") { images = !it; BrowserSettings.updateImageBlocking(images); TabRegistry.current()?.applySettings() } }
+            item { ToggleRow(AppIcons.DesktopWindows, "Modo escritorio", desktop, "Sitio de escritorio por defecto") { desktop = it; BrowserSettings.updateDesktopMode(it); TabRegistry.current()?.applySettings() } }
+
+            item { SectionLabel("Apariencia") }
+            item {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(AppIcons.DarkMode, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.width(14.dp))
+                    Text("Tema", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    TextButton(onClick = {
+                        BrowserSettings.updateDarkMode(
+                            when (BrowserSettings.darkMode) {
+                                true -> false
+                                false -> null
+                                else -> true
                             }
-                            DropdownMenu(expanded = engineOpen, onDismissRequest = { engineOpen = false }) {
-                                BrowserSettings.searchEngines.forEach { (id, _) ->
-                                    DropdownMenuItem(
-                                        text = { Text(id.replaceFirstChar { it.uppercase() }) },
-                                        onClick = { engine = id; BrowserSettings.updateSearchEngine(id); engineOpen = false },
-                                    )
-                                }
+                        )
+                    }) {
+                        Text(
+                            when (BrowserSettings.darkMode) {
+                                true -> "Claro"; false -> "Sistema"; else -> "Oscuro"
+                            }
+                        )
+                    }
+                }
+            }
+
+            item { SectionLabel("Búsqueda") }
+            item {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.Search, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.width(14.dp))
+                    Text("Motor", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    Box {
+                        TextButton(onClick = { engineOpen = true }) {
+                            Text(engine.replaceFirstChar { it.uppercase() })
+                        }
+                        DropdownMenu(expanded = engineOpen, onDismissRequest = { engineOpen = false }) {
+                            BrowserSettings.searchEngines.forEach { (id, _) ->
+                                DropdownMenuItem(
+                                    text = { Text(id.replaceFirstChar { it.uppercase() }) },
+                                    onClick = { engine = id; BrowserSettings.updateSearchEngine(id); engineOpen = false },
+                                )
                             }
                         }
                     }
                 }
-                item { SectionLabel("Datos") }
-                item { TextButton(onClick = { scope.launch { clearing = true; runCatching { FilterListRepo.updateIfStale(true) }; clearing = false } }) { Icon(AppIcons.Download, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(if (clearing) "Actualizando…" else "Actualizar filtros de anuncios") } }
-                item { TextButton(onClick = { BrowserSettings.clearBrowsingData(context) }) { Icon(AppIcons.DeleteSweep, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Borrar datos de navegación") } }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Listo") } },
+
+            item { SectionLabel("Datos") }
+            item {
+                TextButton(
+                    onClick = { BrowserSettings.clearBrowsingData(context) },
+                    modifier = Modifier.padding(start = 8.dp),
+                ) {
+                    Icon(AppIcons.DeleteSweep, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                    Text("Borrar datos de navegación")
+                }
+            }
+            item { Spacer(Modifier.height(24.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun DrawerItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String,
+    onClick: () -> Unit,
+) {
+    NavigationDrawerItem(
+        label = { Text(text) },
+        icon = { Icon(icon, null, Modifier.size(22.dp)) },
+        selected = false,
+        onClick = onClick,
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
     )
 }
 
@@ -520,7 +603,7 @@ private fun SectionLabel(text: String) {
     Text(
         text, style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 4.dp),
+        modifier = Modifier.padding(start = 20.dp, top = 14.dp, bottom = 4.dp),
     )
 }
 
@@ -533,7 +616,7 @@ private fun ToggleRow(
     onChange: (Boolean) -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().clickable { onChange(!checked) }.padding(horizontal = 8.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().clickable { onChange(!checked) }.padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -564,10 +647,13 @@ private fun YouTubeDialog(
             .onFailure { error = it.message ?: "Error"; loading = false }
     }
 
+    val videos = options.filter { !it.isAudio }
+    val audios = options.filter { it.isAudio }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(AppIcons.Block, null) },
-        title = { Text("Descargar de YouTube") },
+        icon = { Icon(AppIcons.Download, null) },
+        title = { Text("Descargar video") },
         text = {
             when {
                 loading -> Row(verticalAlignment = Alignment.CenterVertically) {
@@ -578,34 +664,33 @@ private fun YouTubeDialog(
                     Text(meta?.title ?: "", maxLines = 2, style = MaterialTheme.typography.titleSmall)
                     Text(meta?.uploader ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(8.dp))
-                    LazyColumn(Modifier.heightIn(max = 300.dp)) {
-                        items(options.size) { i ->
-                            val o = options[i]
-                            ListItem(
-                                modifier = Modifier.clickable { onDownload(o, meta?.title ?: "video") },
-                                leadingContent = {
-                                    Icon(if (o.isAudio) AppIcons.MusicNote else AppIcons.Videocam, null)
-                                },
-                                headlineContent = { Text((if (o.isAudio) "Audio · " else "Video · ") + o.quality) },
-                            )
+                    LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                        if (videos.isNotEmpty()) {
+                            item { SectionLabel("Video") }
+                            items(videos.size) { i ->
+                                val o = videos[i]
+                                ListItem(
+                                    modifier = Modifier.clickable { onDownload(o, meta?.title ?: "video") },
+                                    leadingContent = { Icon(AppIcons.Videocam, null) },
+                                    headlineContent = { Text(o.quality) },
+                                )
+                            }
+                        }
+                        if (audios.isNotEmpty()) {
+                            item { SectionLabel("Audio") }
+                            items(audios.size) { i ->
+                                val o = audios[i]
+                                ListItem(
+                                    modifier = Modifier.clickable { onDownload(o, meta?.title ?: "audio") },
+                                    leadingContent = { Icon(AppIcons.MusicNote, null) },
+                                    headlineContent = { Text(o.quality) },
+                                )
+                            }
                         }
                     }
                 }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } },
-    )
-}
-
-@Composable
-private fun MenuItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    text: String,
-    onClick: () -> Unit,
-) {
-    DropdownMenuItem(
-        text = { Text(text) },
-        onClick = onClick,
-        leadingIcon = { Icon(icon, null, Modifier.size(22.dp)) },
     )
 }

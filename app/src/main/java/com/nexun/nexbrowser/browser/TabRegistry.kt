@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import com.nexun.nexbrowser.adblock.AdblockEngine
 import com.nexun.nexbrowser.ext.UserScriptEngine
+import com.nexun.nexbrowser.youtube.YouTubeExtractor
 import java.util.concurrent.atomic.AtomicLong
 
 object TabRegistry {
@@ -27,6 +28,8 @@ object TabRegistry {
         private set
     var webViewAvailable = mutableStateOf(true)
         private set
+    /** URL of a currently playable YouTube video, or null. Drives the floating download button. */
+    val detectedVideoUrl = mutableStateOf<String?>(null)
     private var appContext: Context? = null
     private val idGen = AtomicLong(1)
 
@@ -127,6 +130,8 @@ object TabRegistry {
                     tab.canGoForward = view?.canGoForward() ?: false
                 }
                 runCatching { UserScriptEngine.injectAll(view, url) }
+                applyContentBlocking(view, url)
+                detectPlayableVideo(view, url)
             }
 
             override fun onReceivedError(view: WebView?, req: WebResourceRequest?, err: WebResourceError?) {
@@ -143,6 +148,20 @@ object TabRegistry {
             }
             override fun onReceivedTitle(view: WebView?, title: String?) { tab.title = title ?: "" }
         }
+    }
+
+    private fun applyContentBlocking(view: WebView?, pageUrl: String?) {
+        if (view == null) return
+        if (!BrowserSettings.adblockEnabled) return
+        val js = AdblockEngine.cosmeticInjection(pageUrl) ?: return
+        runCatching { view.evaluateJavascript(js, null) }
+    }
+
+    /** Detects a playable video on the page and exposes it to the UI. */
+    private fun detectPlayableVideo(view: WebView?, pageUrl: String?) {
+        val u = pageUrl ?: return
+        val isYt = Regex("""(?:youtube\.com/(?:watch|shorts|embed)|youtu\.be/)""").containsMatchIn(u)
+        detectedVideoUrl.value = if (isYt && YouTubeExtractor.parseId(u) != null) u else null
     }
 
     private fun handleUrlOverride(tab: Tab, view: WebView, raw: String): Boolean {

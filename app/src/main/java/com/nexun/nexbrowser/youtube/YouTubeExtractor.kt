@@ -14,7 +14,13 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 data class VideoMeta(val title: String, val uploader: String, val duration: Long, val id: String)
-data class StreamOption(val quality: String, val url: String, val isAudio: Boolean)
+data class StreamOption(
+    val quality: String,
+    val url: String,
+    val isAudio: Boolean,
+    val resolution: String = "",
+    val bitrateKbps: Int = 0,
+)
 
 object YouTubeExtractor {
     @Volatile private var initialized = false
@@ -39,12 +45,33 @@ object YouTubeExtractor {
         val opts = mutableListOf<StreamOption>()
         runCatching {
             info.videoStreams.forEach { s ->
-                opts.add(StreamOption(s.resolution.ifEmpty { "video" }, s.content, false))
+                if (s.content == null) return@forEach
+                val res = s.resolution?.takeIf { it.isNotBlank() } ?: "${s.height}p"
+                val muxed = s.isVideoOnly != true
+                opts.add(
+                    StreamOption(
+                        quality = if (muxed) "$res (video+audio)" else "$res (solo video)",
+                        url = s.content,
+                        isAudio = false,
+                        resolution = res,
+                        bitrateKbps = s.bitrate,
+                    )
+                )
             }
         }
         runCatching {
             info.audioStreams.forEach { s ->
-                opts.add(StreamOption(s.quality ?: "audio", s.content, true))
+                if (s.content == null) return@forEach
+                val q = s.quality?.takeIf { it.isNotBlank() } ?: "audio"
+                opts.add(
+                    StreamOption(
+                        quality = "$q (audio)",
+                        url = s.content,
+                        isAudio = true,
+                        resolution = "audio",
+                        bitrateKbps = s.bitrate,
+                    )
+                )
             }
         }
         if (opts.isEmpty()) throw IllegalStateException("Sin streams disponibles")
@@ -58,12 +85,18 @@ object YouTubeExtractor {
 
     suspend fun download(context: Context, option: StreamOption, name: String): File = withContext(Dispatchers.IO) {
         val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
-        val ext = if (option.isAudio) "m4a" else "mp4"
+        val ext = when {
+            option.isAudio -> "m4a"
+            option.resolution.contains("webm", true) -> "webm"
+            else -> "mp4"
+        }
         val safe = name.take(60).replace(Regex("[^\\w\\- ]"), "_").trim().ifEmpty { "video" }
-        val out = File(dir, "$safe.$ext")
+        val suffix = if (option.isAudio) "audio" else option.resolution.filter { it.isLetterOrDigit() }
+            .ifEmpty { "video" }
+        val out = File(dir, "$safe-$suffix.$ext")
         val conn = (URL(option.url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 12000
-            readTimeout = 60000
+            readTimeout = 120000
             instanceFollowRedirects = true
             setRequestProperty("User-Agent", "Mozilla/5.0")
         }

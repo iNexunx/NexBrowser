@@ -10,6 +10,9 @@ object FilterListRepo {
     private val SOURCES = listOf(
         "https://easylist.to/easylist/easylist.txt",
         "https://easylist.to/easylist/easyprivacy.txt",
+        "https://raw.githubusercontent.com/AdguardTeam/AdguardFilters/master/BaseFilter/sections/adservers.txt",
+        "https://raw.githubusercontent.com/AdguardTeam/AdguardFilters/master/BaseFilter/sections/cosmetic.txt",
+        "https://raw.githubusercontent.com/AdguardTeam/AdguardFilters/master/SpywareFilter/sections/tracking_servers.txt",
     )
     private const val MAX_BYTES = 12 * 1024 * 1024
     private var lastUpdate = 0L

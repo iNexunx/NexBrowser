@@ -415,4 +415,75 @@ object AppIcons {
             close()
         }
     }
+
+    /** Compass — modern browser brand mark. */
+    val Compas: ImageVector = vec("Compass") {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(12f, 2f)
+            curveTo(6.48f, 2f, 2f, 6.48f, 2f, 12f)
+            reflectiveCurveTo(6.48f, 22f, 12f, 22f)
+            reflectiveCurveTo(22f, 17.52f, 22f, 12f)
+            reflectiveCurveTo(17.52f, 2f, 12f, 2f)
+            close()
+            moveTo(12f, 20f)
+            curveTo(7.59f, 20f, 4f, 16.41f, 4f, 12f)
+            reflectiveCurveTo(7.59f, 4f, 12f, 4f)
+            reflectiveCurveTo(20f, 7.59f, 20f, 12f)
+            reflectiveCurveTo(16.41f, 20f, 12f, 20f)
+            close()
+            moveTo(16.24f, 7.76f)
+            lineTo(9.19f, 9.19f)
+            lineTo(7.76f, 16.24f)
+            lineTo(14.81f, 14.81f)
+            close()
+            moveTo(12.5f, 12.5f)
+            lineTo(10.5f, 13.5f)
+            lineTo(11.5f, 11.5f)
+            lineTo(13.5f, 10.5f)
+            close()
+        }
+    }
+
+    /** Refresh / sync arrows. */
+    val RefreshIcon: ImageVector = vec("Refresh") {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(17.65f, 6.35f)
+            curveTo(16.2f, 4.9f, 14.21f, 4f, 12f, 4f)
+            curveTo(7.58f, 4f, 4f, 7.58f, 4f, 12f)
+            reflectiveCurveTo(7.58f, 20f, 12f, 20f)
+            curveTo(15.73f, 20f, 18.84f, 17.45f, 19.73f, 14f)
+            horizontalLineTo(17.65f)
+            curveTo(16.83f, 16.33f, 14.61f, 18f, 12f, 18f)
+            curveTo(8.69f, 18f, 6f, 15.31f, 6f, 12f)
+            reflectiveCurveTo(8.69f, 6f, 12f, 6f)
+            curveTo(13.66f, 6f, 15.14f, 6.69f, 16.22f, 7.78f)
+            lineTo(13f, 11f)
+            horizontalLineTo(20f)
+            verticalLineTo(4f)
+            close()
+        }
+    }
+
+    /** Shield — adblock / privacy. */
+    val Shield: ImageVector = vec("Shield") {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(12f, 1f)
+            lineTo(3f, 5f)
+            verticalLineTo(11f)
+            curveTo(3f, 16.55f, 6.84f, 21.74f, 12f, 23f)
+            curveTo(17.16f, 21.74f, 21f, 16.55f, 21f, 11f)
+            verticalLineTo(5f)
+            lineTo(12f, 1f)
+            close()
+            moveTo(12f, 11.99f)
+            horizontalLineTo(19f)
+            curveTo(18.47f, 16.11f, 15.68f, 19.84f, 12f, 20.93f)
+            verticalLineTo(12f)
+            horizontalLineTo(5f)
+            verticalLineTo(11f)
+            lineTo(12f, 7.12f)
+            verticalLineTo(11.99f)
+            close()
+        }
+    }
 }
