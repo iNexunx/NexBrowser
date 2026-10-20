@@ -18,16 +18,24 @@ class Tab(val id: Long) {
     var canGoBack = false
     var canGoForward = false
     private var savedState: android.os.Bundle? = null
+    /** Last URL that was loaded, kept even if the WebView is destroyed. */
+    var lastUrl: String = "about:blank"
+    /** Set when the renderer process died; UI can surface a message. */
+    var rendererCrashed = false
+
+    fun onRendererGone(crashed: Boolean) {
+        rendererCrashed = crashed
+        isLoading = false
+        loadFinished = true
+        progress = 100
+        canGoBack = false
+        canGoForward = false
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     fun ensureWebView(context: Context, incognito: Boolean): WebView {
         webView?.let { return it }
-        val wv = try {
-            WebView(context)
-        } catch (t: Throwable) {
-            // Extremely rare: WebView unavailable on device.
-            throw IllegalStateException("WebView no disponible en este dispositivo", t)
-        }
+        val wv = WebViewCompatFactory.create(context)
         runCatching { wv.settings.apply { configure(this, context, incognito) } }
         runCatching {
             CookieManager.getInstance().setAcceptCookie(!incognito)

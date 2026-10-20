@@ -28,6 +28,8 @@ object TabRegistry {
         private set
     var webViewAvailable = mutableStateOf(true)
         private set
+
+    fun markWebViewUnavailable() { webViewAvailable.value = false }
     /** URL of a currently playable YouTube video, or null. Drives the floating download button. */
     val detectedVideoUrl = mutableStateOf<String?>(null)
     /** Long-press context menu target (kind, url, extra). */
@@ -62,8 +64,22 @@ object TabRegistry {
         if (activeIndex.value > tabs.lastIndex) activeIndex.value = tabs.lastIndex
     }
 
-    fun closeTab(index: Int) {
-        if (index !in tabs.indices) return
+    /**
+     * Rebuilds the active tab's WebView after its renderer process died, reloading
+     * the last URL. Called from WebViewClient.onRenderProcessGone so the app keeps
+     * running instead of being killed by the framework.
+     */
+    fun reopenActiveTab() {
+        val ctx = appContext ?: return
+        val tab = current() ?: return
+        runCatching {
+            val target = tab.lastUrl.takeIf { it.isNotBlank() && it != "about:blank" } ?: tab.url
+            attach(tab, ctx)
+            tab.webView?.loadUrl(if (target == "about:blank") HOME else target)
+        }
+    }
+
+    fun closeTab(index: Int) {        if (index !in tabs.indices) return
         runCatching { tabs[index].destroy() }
         tabs.removeAt(index)
         if (tabs.isEmpty()) openTab()
@@ -142,7 +158,8 @@ object TabRegistry {
                 tab.isLoading = true
                 tab.loadFinished = false
                 tab.progress = 0
-                url?.let { tab.url = it }
+                tab.rendererCrashed = false
+                url?.let { tab.url = it; tab.lastUrl = it }
                 // Inject as early as possible so cosmetics hide ads during render.
                 applyContentBlocking(view, url)
             }
@@ -155,7 +172,7 @@ object TabRegistry {
                 tab.isLoading = false
                 tab.loadFinished = true
                 tab.progress = 100
-                url?.let { tab.url = it }
+                url?.let { tab.url = it; tab.lastUrl = it }
                 runCatching {
                     tab.canGoBack = view?.canGoBack() ?: false
                     tab.canGoForward = view?.canGoForward() ?: false
@@ -172,6 +189,22 @@ object TabRegistry {
                     tab.loadFinished = true
                     tab.progress = 100
                 }
+            }
+
+            override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
+                // Returning true prevents Android from killing the whole app when the
+                // renderer dies (incompatible WebView / OOM / vendor bug). We rebuild
+                // the tab's WebView cleanly instead.
+                val crashed = detail?.didCrash() ?: false
+                tab.onRendererGone(crashed)
+                runCatching {
+                    (view?.parent as? android.view.ViewGroup)?.removeView(view)
+                    view?.destroy()
+                }
+                tab.webView = null
+                webViewAvailable.value = true
+                runCatching { reopenActiveTab() }
+                return true
             }
         }
         wv.webChromeClient = object : WebChromeClient() {

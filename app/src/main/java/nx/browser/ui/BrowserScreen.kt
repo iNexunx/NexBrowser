@@ -59,6 +59,7 @@ fun BrowserScreen(onOpenExternal: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     val incognito by TabRegistry.incognito
     val detectedVideo by TabRegistry.detectedVideoUrl
+    val webViewAvailable by TabRegistry.webViewAvailable
 
     var editing by remember { mutableStateOf(false) }
     var omnibox by remember { mutableStateOf("") }
@@ -187,13 +188,21 @@ fun BrowserScreen(onOpenExternal: (String) -> Unit) {
         },
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
+            if (!webViewAvailable) {
+                WebViewUnavailableNotice()
+            }
             key(tab.id) {
                 AndroidView(
                     factory = { ctx ->
-                        tab.ensureWebView(ctx, incognito).also { wv ->
-                            (wv.parent as? ViewGroup)?.removeView(wv)
-                            attachPullToRefresh(wv) { tab.webView?.reload() }
+                        val wv = try {
+                            tab.ensureWebView(ctx, incognito)
+                        } catch (t: Throwable) {
+                            TabRegistry.markWebViewUnavailable()
+                            return@AndroidView android.view.View(ctx)
                         }
+                        (wv.parent as? ViewGroup)?.removeView(wv)
+                        attachPullToRefresh(wv) { tab.webView?.reload() }
+                        wv
                     },
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -647,6 +656,65 @@ private fun DownloadsDialog(onDismiss: () -> Unit) {
                 TextButton(onClick = { DownloadsRegistry.clearFinished() }) { Text("Limpiar") }
         },
     )
+}
+
+/** Shown when the device WebView is missing, broken or a different provider failed. */
+@Composable
+private fun WebViewUnavailableNotice() {
+    val context = LocalContext.current
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            Modifier.fillMaxSize().padding(28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(Icons.Default.Warning, null, Modifier.size(56.dp),
+                tint = MaterialTheme.colorScheme.error)
+            Spacer(Modifier.height(16.dp))
+            Text("WebView no disponible", style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "NexBrowser usa el motor WebView del sistema. Instálalo o actívalo para poder navegar.\n\n" +
+                    "Prueba una de estas opciones:",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(16.dp))
+            Button(onClick = {
+                runCatching {
+                    context.startActivity(
+                        android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse("market://details?id=com.google.android.webview"),
+                        )
+                    )
+                }
+            }) { Text("Instalar Android System WebView") }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = {
+                runCatching {
+                    context.startActivity(
+                        android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse("market://details?id=com.android.chrome"),
+                        )
+                    )
+                }
+            }) { Text("Instalar / activar Chrome") }
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = {
+                runCatching {
+                    context.startActivity(
+                        android.content.Intent(android.provider.Settings.ACTION_WEBVIEW_SETTINGS)
+                    )
+                }
+            }) { Text("Abrir ajustes de WebView") }
+        }
+    }
 }
 
 /** Opens a finished download with the system viewer (Via-style "open file"). */
