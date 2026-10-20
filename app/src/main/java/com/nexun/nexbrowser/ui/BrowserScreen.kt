@@ -198,6 +198,28 @@ fun BrowserScreen(onOpenExternal: (String) -> Unit) {
                     modifier = Modifier.fillMaxSize(),
                 )
             }
+            // Pull-to-refresh spinner overlay (browser-style).
+            val offset = pullOffset.value
+            if (offset > 0f) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = (offset / 3f).dp),
+                ) {
+                    Surface(
+                        shape = MaterialTheme.shapes.extraLarge,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        tonalElevation = 3.dp,
+                    ) {
+                        Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                strokeWidth = 2.5.dp,
+                            )
+                        }
+                    }
+                }
+            }
             // Floating "download this video" button.
             AnimatedVisibility(
                 visible = detectedVideo != null,
@@ -212,7 +234,6 @@ fun BrowserScreen(onOpenExternal: (String) -> Unit) {
             }
         }
     }
-
     if (showTabs) {
         TabsSheet(
             onDismiss = { showTabs = false },
@@ -316,34 +337,42 @@ private fun LongPressMenu(
     )
 }
 
-/** Pull-down-to-refresh: single-finger only, ignores pinch-zoom to avoid lag. */
+/** Pull-down-to-refresh: single-finger only, ignores pinch-zoom. Shows a spinner like a browser. */
+private val pullOffset = mutableStateOf(0f)
+
 private fun attachPullToRefresh(wv: WebView, onRefresh: () -> Unit) {
     var startY = 0f
     var startX = 0f
     var tracking = false
     var triggered = false
+    val threshold = 200f
     wv.setOnTouchListener { _, ev ->
         when (ev.actionMasked) {
             android.view.MotionEvent.ACTION_DOWN -> {
                 startY = ev.y; startX = ev.x; triggered = false
-                tracking = true
+                tracking = wv.scrollY <= 0
             }
             android.view.MotionEvent.ACTION_POINTER_DOWN -> {
-                // Second finger: it's a pinch-zoom, cancel refresh tracking.
-                tracking = false; triggered = false
+                tracking = false; triggered = false; pullOffset.value = 0f
             }
             android.view.MotionEvent.ACTION_MOVE -> {
                 if (!tracking || triggered) return@setOnTouchListener false
                 val dy = ev.y - startY
                 val dx = kotlin.math.abs(ev.x - startX)
-                if (dx > kotlin.math.abs(dy)) { tracking = false; return@setOnTouchListener false }
-                if (dy > 280f && wv.scrollY <= 0 && !wv.canScrollVertically(-1)) {
+                if (dx > kotlin.math.abs(dy)) { tracking = false; pullOffset.value = 0f; return@setOnTouchListener false }
+                if (!wv.canScrollVertically(-1)) {
+                    pullOffset.value = (dy.coerceIn(0f, threshold * 2f))
+                } else {
+                    pullOffset.value = 0f
+                }
+                if (dy > threshold && wv.scrollY <= 0 && !wv.canScrollVertically(-1)) {
                     triggered = true
                     onRefresh()
                 }
             }
             android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
                 tracking = false; triggered = false
+                pullOffset.value = 0f
             }
         }
         false
