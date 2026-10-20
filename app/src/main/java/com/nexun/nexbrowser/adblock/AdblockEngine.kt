@@ -309,8 +309,8 @@ object AdblockEngine {
     }
 
     /**
-     * Extracts path/segment keywords from path-based rules like `/adv/*`, `||x.com/banner^`.
-     * Kept short and hash-lookup friendly so blocking stays O(1)-ish per request.
+     * Extracts path/segment keywords from path-based rules like "/adv/" and "||x.com/banner^".
+     * Kept short and hash-lookup friendly so blocking stays cheap per request.
      */
     private fun keywordFromRule(rule: String): String? {
         var s = rule
