@@ -172,8 +172,9 @@ object TabRegistry {
             override fun onReceivedTitle(view: WebView?, title: String?) { tab.title = title ?: "" }
         }
         runCatching {
-            wv.setOnLongClickListener {
-                val r = it.hitTestResult
+            wv.setOnLongClickListener { v ->
+                val web = v as? WebView ?: return@setOnLongClickListener false
+                val r = web.hitTestResult
                 val extra = r.extra ?: ""
                 val kind = when (r.type) {
                     android.webkit.WebView.HitTestResult.SRC_ANCHOR_TYPE,

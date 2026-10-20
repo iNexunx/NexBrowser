@@ -224,8 +224,9 @@ fun BrowserScreen(onOpenExternal: (String) -> Unit) {
         onDismiss = { showYt = false },
         onDownload = { opt, name ->
             val label = opt.quality
+            val videoUrl = detectedVideo ?: tab.url
             if (YouTubeExtractor.parseId(opt.url) != null || opt.resolution == "audio" ||
-                YouTubeExtractor.parseId(url) != null
+                YouTubeExtractor.parseId(videoUrl) != null
             ) {
                 DownloadsRegistry.add(DownloadEntry(name, "Descargando", label))
                 scope.launch {
@@ -290,21 +291,21 @@ private fun LongPressMenu(
                     color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3)
                 Spacer(Modifier.height(8.dp))
                 if (lp.kind == TabRegistry.LongPress.Kind.LINK) {
-                    ListItem(text = { Text("Abrir en pestaña nueva") },
+                    ListItem(headlineContent = { Text("Abrir en pestaña nueva") },
                         modifier = Modifier.clickable(onClick = onOpenNewTab))
-                    ListItem(text = { Text("Abrir aquí") },
+                    ListItem(headlineContent = { Text("Abrir aquí") },
                         modifier = Modifier.clickable(onClick = onOpenHere))
                 }
                 if (lp.kind == TabRegistry.LongPress.Kind.IMAGE ||
                     lp.kind == TabRegistry.LongPress.Kind.MEDIA ||
                     lp.kind == TabRegistry.LongPress.Kind.LINK
                 ) {
-                    ListItem(text = { Text("Descargar") },
+                    ListItem(headlineContent = { Text("Descargar") },
                         modifier = Modifier.clickable(onClick = onDownload))
                 }
-                ListItem(text = { Text("Copiar enlace") },
+                ListItem(headlineContent = { Text("Copiar enlace") },
                     modifier = Modifier.clickable(onClick = onCopy))
-                ListItem(text = { Text("Compartir") },
+                ListItem(headlineContent = { Text("Compartir") },
                     modifier = Modifier.clickable(onClick = onShare))
             }
         },
