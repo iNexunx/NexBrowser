@@ -1,0 +1,161 @@
+package com.nexun.nexbrowser.browser
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.graphics.Bitmap
+import android.os.Build
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import com.nexun.nexbrowser.adblock.AdblockEngine
+import com.nexun.nexbrowser.ext.UserScriptEngine
+import java.util.concurrent.atomic.AtomicLong
+
+object TabRegistry {
+    const val HOME = "https://www.google.com"
+    private const val MAX_LIVE_TABS = 12
+
+    private val tabs = mutableStateListOf<Tab>()
+    val activeIndex = mutableStateOf(0)
+    var incognito = mutableStateOf(false)
+        private set
+    var webViewAvailable = mutableStateOf(true)
+        private set
+    private var appContext: Context? = null
+    private val idGen = AtomicLong(1)
+
+    fun init(context: Context) {
+        appContext = context.applicationContext
+    }
+
+    fun current(): Tab? = tabs.getOrNull(activeIndex.value)
+
+    fun openTab(url: String = HOME, background: Boolean = false) {
+        val ctx = appContext ?: return
+        if (tabs.size >= MAX_LIVE_TABS) {
+            // Recycle the oldest non-active tab to keep memory bounded.
+            val victim = tabs.indices.firstOrNull { it != activeIndex.value }
+            if (victim != null) { tabs[victim].destroy(); tabs.removeAt(victim) }
+        }
+        val tab = Tab(idGen.getAndIncrement())
+        tabs.add(tab)
+        if (!background) activeIndex.value = tabs.lastIndex
+        attach(tab, ctx)
+        runCatching {
+            tab.webView?.loadUrl(if (url == "about:blank") HOME else url)
+        }
+        if (activeIndex.value > tabs.lastIndex) activeIndex.value = tabs.lastIndex
+    }
+
+    fun closeTab(index: Int) {
+        if (index !in tabs.indices) return
+        runCatching { tabs[index].destroy() }
+        tabs.removeAt(index)
+        if (tabs.isEmpty()) openTab()
+        activeIndex.value = activeIndex.value.coerceIn(0, tabs.lastIndex)
+    }
+
+    fun select(index: Int) { activeIndex.value = index.coerceIn(0, tabs.lastIndex) }
+    fun count(): Int = tabs.size
+    fun tabsSnapshot(): List<Tab> = tabs.toList()
+
+    fun setIncognito(on: Boolean) {
+        if (incognito.value == on) return
+        incognito.value = on
+        tabs.forEach { runCatching { it.destroy() } }
+        tabs.clear()
+        openTab()
+    }
+
+    fun saveAllStates() { tabs.forEach { runCatching { it.saveState() } } }
+
+    fun onTrimMemory() {
+        if (tabs.size > 3) {
+            tabs.take(tabs.size - 3).forEach { runCatching { it.saveState() } }
+        }
+        if (tabs.size > MAX_LIVE_TABS) {
+            while (tabs.size > MAX_LIVE_TABS) {
+                val victim = tabs.indices.firstOrNull { it != activeIndex.value } ?: break
+                tabs[victim].destroy(); tabs.removeAt(victim)
+            }
+            activeIndex.value = activeIndex.value.coerceIn(0, tabs.lastIndex)
+        }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun attach(tab: Tab, ctx: Context) {
+        val wv = try {
+            tab.ensureWebView(ctx, incognito.value)
+        } catch (t: Throwable) {
+            webViewAvailable.value = false
+            return
+        }
+        wv.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest): Boolean =
+                handleUrlOverride(tab, view, req.url.toString())
+
+            @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+            override fun shouldOverrideUrlLoading(view: WebView, url: String?): Boolean =
+                handleUrlOverride(tab, view, url ?: return false)
+
+            override fun shouldInterceptRequest(view: WebView, req: WebResourceRequest): WebResourceResponse? {
+                val u = req.url?.toString() ?: return null
+                if (!BrowserSettings.adblockEnabled) return null
+                return runCatching {
+                    if (AdblockEngine.shouldBlock(u, view.url ?: tab.url)) {
+                        WebResourceResponse("text/plain", "utf-8", "".byteInputStream())
+                    } else null
+                }.getOrNull()
+            }
+
+            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                tab.isLoading = true; tab.progress = 0
+                url?.let { tab.url = it }
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                tab.isLoading = false; tab.progress = 100
+                url?.let { tab.url = it }
+                runCatching {
+                    tab.canGoBack = view?.canGoBack() ?: false
+                    tab.canGoForward = view?.canGoForward() ?: false
+                }
+                runCatching { UserScriptEngine.injectAll(view, url) }
+            }
+
+            override fun onReceivedError(view: WebView?, req: WebResourceRequest?, err: WebResourceError?) {
+                if (req?.isForMainFrame == true) {
+                    tab.isLoading = false
+                    tab.progress = 100
+                }
+            }
+        }
+        wv.webChromeClient = object : WebChromeClient() {
+            override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                tab.progress = newProgress
+                tab.isLoading = newProgress in 1..99
+            }
+            override fun onReceivedTitle(view: WebView?, title: String?) { tab.title = title ?: "" }
+        }
+    }
+
+    private fun handleUrlOverride(tab: Tab, view: WebView, raw: String): Boolean {
+        val u = raw.trim()
+        if (u.isEmpty()) return false
+        if (!u.startsWith("http://") && !u.startsWith("https://") && !u.startsWith("about:")) {
+            return false
+        }
+        if (BrowserSettings.httpsOnly && u.startsWith("http://")) {
+            runCatching { view.loadUrl(u.replaceFirst("http://", "https://")) }
+            return true
+        }
+        tab.url = u
+        return false
+    }
+}
