@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
 import android.webkit.CookieManager
+import android.webkit.DownloadListener
 import android.webkit.WebSettings
 import android.webkit.WebView
 
@@ -34,6 +35,11 @@ class Tab(val id: Long) {
                 wv, !incognito && !BrowserSettings.blockThirdPartyCookies
             )
         }
+        runCatching {
+            wv.setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimetype, _ ->
+                BrowserDownloader.start(context, url, userAgent, contentDisposition, mimetype)
+            })
+        }
         runCatching { savedState?.let { wv.restoreState(it) } }
         webView = wv
         return wv
@@ -55,8 +61,16 @@ class Tab(val id: Long) {
         s.loadsImagesAutomatically = !BrowserSettings.imageBlocking
         s.blockNetworkImage = BrowserSettings.imageBlocking
 
+        // Needed so GitHub / file hosts can trigger downloads and blob navigations.
+        runCatching {
+            s.setSupportMultipleWindows(false)
+            s.javaScriptCanOpenWindowsAutomatically = true
+            s.allowFileAccessFromFileURLs = false
+            s.allowUniversalAccessFromFileURLs = false
+        }
+
         // Mixed content: strict when possible (API 21+).
-        runCatching { s.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW }
+        runCatching { s.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE }
 
         // Safe browsing only API 26+.
         if (BrowserSettings.supportsSafeBrowsing()) {
@@ -73,7 +87,6 @@ class Tab(val id: Long) {
 
         s.userAgentString = if (BrowserSettings.desktopMode) desktopUa() else mobileUa(s.userAgentString)
 
-        // Third-party cookie strategy also covers API<21 gracefully.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             runCatching { s.setSupportMultipleWindows(false) }
         }
@@ -85,8 +98,7 @@ class Tab(val id: Long) {
             wv.settings.javaScriptEnabled = BrowserSettings.javaScriptEnabled
             wv.settings.loadsImagesAutomatically = !BrowserSettings.imageBlocking
             wv.settings.blockNetworkImage = BrowserSettings.imageBlocking
-            wv.settings.userAgentString =
-                if (BrowserSettings.desktopMode) desktopUa() else mobileUa(wv.settings.userAgentString)
+            wv.settings.userAgentString = if (BrowserSettings.desktopMode) desktopUa() else mobileUa("")
         }
     }
 
@@ -101,13 +113,19 @@ class Tab(val id: Long) {
     }
 
     private fun mobileUa(base: String): String {
-        val cleaned = base
-            .replace(Regex("""(Version/\d+\.\d+ )?Chrome/\S+ """), "")
-            .replace(Regex(""" NexBrowser/\S+"""), "")
-        return "$cleaned NexBrowser/1.0"
+        val real = if (base.isBlank() || base.contains("wv)") || base.contains("Version/"))
+            DEFAULT_MOBILE_UA else base
+        return real
     }
 
-    private fun desktopUa(): String =
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 NexBrowser/1.0"
+    private fun desktopUa(): String = DEFAULT_DESKTOP_UA
+
+    companion object {
+        const val DEFAULT_MOBILE_UA =
+            "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
+        const val DEFAULT_DESKTOP_UA =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+    }
 }

@@ -31,14 +31,15 @@ object AdblockEngine {
 
     private var seedLoaded = false
 
-    /** Built-in aggressive seed blocklist (Aggressive seed categories). */
+    /** Built-in aggressive seed blocklist (works fully offline). */
     private val SEED_HOSTS = listOf(
         // Google ads / syndication / analytics
         "doubleclick.net", "googlesyndication.com", "googleadservices.com",
-        "adservice.google.com", "pagead2.googlesyndication.com",
+        "adservice.google.com", "pagead2.googlesyndication.com", "googleads.g.doubleclick.net",
         "partnerad.l.google.com", "ad.doubleclick.net", "stats.g.doubleclick.net",
         "googletagservices.com", "googletagmanager.com", "google-analytics.com",
-        "ssl.google-analytics.com", "analytics.google.com", "googlesyndication.com",
+        "ssl.google-analytics.com", "analytics.google.com", "www.googletagmanager.com",
+        "adwords.google.com", "google.com/pagead", "fundingchoicesmessages.google.com",
         // Big ad networks / exchanges
         "ads.yahoo.com", "advertising.com", "adsrvr.org", "amazon-adsystem.com",
         "taboola.com", "taboolanews.com", "outbrain.com", "criteo.com", "criteo.net",
@@ -50,23 +51,41 @@ object AdblockEngine {
         "improvedigital.com", "smaato.net", "mopub.com", "adcolony.com", "applovin.com",
         "unityads.unity3d.com", "chartboost.com", "inmobi.com", "startapp.com",
         "vungle.com", "ironsrc.com", "supersonicads.com", "fyber.com", "tapjoy.com",
+        "pubnative.net", "verve.com", "smaato.com", "adcolony.net", "inmobi.net",
+        "360yield.com", "bidr.io", "tribalfusion.com", "adroll.com", "adsafeprotected.com",
+        "serving-sys.com", "sizmek.com", "flashtalking.com", "innovid.com", "spotxchange.com",
+        "spotx.tv", "loopme.me", "yieldlab.net", "stickyadstv.com", "undertone.com",
+        "lijit.com", "sovrn.com", "gumgum.net", "rhythmone.com", "adledge.com",
+        "bluekai.com", "demdex.net", "omtrdc.net", "everesttech.net", "krxd.net",
+        "adsymptotic.com", "agkn.com", "addthis.com", "mathtag.com", "netmng.com",
+        "turn.com", "tapad.com", "crwdcntrl.net", "exelator.com", "liveramp.com",
+        "owneriq.net", "ml314.com", "matomo.cloud", "adobedtm.com",
         // Trackers / attribution / crash
         "crashlytics.com", "appsflyer.com", "adjust.com", "branch.io", "kochava.com",
         "mparticle.com", "segment.io", "segment.com", "amplitude.com", "mixpanel.com",
         "flurry.com", "newrelic.com", "bugsnag.com", "sentry.io", "dsp.io",
+        "yandex.ru/metrika", "mc.yandex.ru", "metrika.yandex.ru", "statcounter.com",
+        "cdn.mxpnl.com", "api.segment.io", "logx.optimizely.com",
         // Fingerprint / beacons / heatmap
         "hotjar.com", "fullstory.com", "mouseflow.com", "smartlook.com", "clarity.ms",
         "crazyegg.com", "luckyorange.com", "inspectlet.com", "userzoom.com",
+        "coinhive.com", "coin-hive.com", "cryptoloot.pro", "authedmine.com", // miners
         // Native/mobile ads
-        "tracking.miui.com", "ads.mopub.com", "cdn.adx1.com",
+        "tracking.miui.com", "ads.mopub.com", "cdn.adx1.com", "admanmedia.com",
+        "admarketplace.com", "yieldoptimizer.com", "zedo.net",
+        // Popups / adult ad networks commonly deployed everywhere
+        "popads.net", "popcash.net", "propellerads.com", "propellerpops.com",
+        "onclickads.net", "onclckds.com", "exoclick.com", "juicyads.com",
+        "trafficjunky.com", "adnium.com", "adsupply.com", "hilltopads.net",
+        "adsterra.com", "clickadu.com", "mgid.com", "unknownads.com",
     )
 
     /** Generic cosmetic selectors (common EasyList selectors). */
     private val SEED_GENERIC = listOf(
         "[id^=\"google_ads_\"]", "[id^=\"div-gpt-ad\"]", "[id*=\"google_ads_iframe\"]",
         "ins.adsbygoogle", ".adsbygoogle", "[class*=\"ad-slot\"]", "[class*=\"ad-container\"]",
-        "[class^=\"ad-\"]", "[class*=\"-ad-\"]", "[id^=\"ad-\"]", "[id^=\"ads-\"]",
-        "[class*=\"sponsored\"]", "[class*=\"Sponsored\"]", "[id*=\"taboola\"]",
+        "[id^=\"ad-\"]", "[id^=\"ads-\"]", "[class*=\"advert\"]", "[id*=\"advert\"]",
+        "[class*=\"sponsored\"]", "[id*=\"taboola\"]",
         "[class*=\"taboola\"]", "[id*=\"outbrain\"]", "[class*=\"outbrain\"]",
         "[class*=\"advertisement\"]", "[id*=\"advertisement\"]", "[data-ad-slot]",
         "[data-ad-client]", "amp-ad", "amp-embed", "iframe[src*=\"doubleclick\"]",
@@ -74,6 +93,10 @@ object AdblockEngine {
         ".adBanner", ".adsbox", ".ad-placeholder", ".ad-wrapper", ".ad-leaderboard",
         "[aria-label=\"advertisement\"]", "[class*=\"native-ad\"]", "[class*=\"promoted\"]",
         "[class*=\"interstitial\"]", "[id*=\"interstitial\"]", "[class*=\"sticky-ad\"]",
+        ".ad", ".ads", ".adbox", ".ad-container", ".ad-slot", ".ad-banner",
+        "[class*=\"-ad\"]", "[id*=\"-ad-\"]", "[class*=\"ad_]\"]", "[id*=\"googlead\"]",
+        "div[class^=\"ad\"]", "[class*=\"banner-ads\"]", "[class*=\"ads-holder\"]",
+        "[id=\"adframe\"]", "[id=\"adFrame\"]", ".adthrive-ad", ".ezoic-ad",
     )
 
     fun ensureSeed() {
@@ -272,4 +295,16 @@ object AdblockEngine {
     fun ruleCount(): Int = exactHosts.size + keywordRules.size + genericHide.size
     fun cosmeticRuleCount(): Int = genericHide.size + domainHide.size
     fun reset() { blockedCount = 0; cosmeticCount = 0 }
+
+    /** Serialize learned (non-seed) rules so they survive restarts. */
+    fun exportRules(): String {
+        val sb = StringBuilder()
+        exactHosts.forEach { if (it !in SEED_HOSTS) sb.append("||").append(it).append('\n') }
+        keywordRules.forEach { sb.append(it).append('\n') }
+        genericHide.forEach { if (it !in SEED_GENERIC) sb.append("##").append(it).append('\n') }
+        domainHide.forEach { (d, sels) -> sels.forEach { sb.append(d).append("##").append(it).append('\n') } }
+        return sb.toString()
+    }
+
+    fun loadRules(text: String) = loadEasyListRules(text)
 }

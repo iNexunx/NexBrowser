@@ -54,7 +54,7 @@ private val Dark = darkColorScheme(
 @Composable
 fun NexBrowserTheme(
     dark: Boolean = isSystemInDarkTheme(),
-    dynamic: Boolean = true,
+    dynamic: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val ctx = LocalContext.current

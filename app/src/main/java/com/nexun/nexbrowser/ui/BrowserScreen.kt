@@ -565,18 +565,19 @@ private fun SettingsScreen(
                     Icon(AppIcons.DarkMode, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.width(14.dp))
                     Text("Tema", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    // null = sistema, false = claro, true = oscuro
                     TextButton(onClick = {
                         BrowserSettings.updateDarkMode(
                             when (BrowserSettings.darkMode) {
-                                true -> false
-                                false -> null
-                                else -> true
+                                null -> false
+                                false -> true
+                                else -> null
                             }
                         )
                     }) {
                         Text(
                             when (BrowserSettings.darkMode) {
-                                true -> "Claro"; false -> "Sistema"; else -> "Oscuro"
+                                null -> "Sistema"; false -> "Claro"; else -> "Oscuro"
                             }
                         )
                     }
@@ -679,12 +680,27 @@ private fun YouTubeDialog(
     var error by remember { mutableStateOf<String?>(null) }
     var meta by remember { mutableStateOf<com.nexun.nexbrowser.youtube.VideoMeta?>(null) }
     var options by remember { mutableStateOf<List<com.nexun.nexbrowser.youtube.StreamOption>>(emptyList()) }
+    val isYouTube = com.nexun.nexbrowser.youtube.YouTubeExtractor.parseId(url) != null
 
     LaunchedEffect(url) {
         loading = true
-        runCatching { YouTubeExtractor.extract(url) }
-            .onSuccess { (m, o) -> meta = m; options = o; loading = false }
-            .onFailure { error = it.message ?: "Error"; loading = false }
+        if (isYouTube) {
+            runCatching { YouTubeExtractor.extract(url) }
+                .onSuccess { (m, o) -> meta = m; options = o; loading = false }
+                .onFailure { error = it.message ?: "Error"; loading = false }
+        } else {
+            // Generic media: offer the URL as a direct download.
+            val name = url.substringBefore('?').substringAfterLast('/').ifBlank { "media" }
+            options = listOf(
+                com.nexun.nexbrowser.youtube.StreamOption(
+                    quality = name,
+                    url = url,
+                    isAudio = false,
+                    resolution = "media",
+                )
+            )
+            loading = false
+        }
     }
 
     val videos = options.filter { !it.isAudio }
@@ -693,20 +709,22 @@ private fun YouTubeDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(AppIcons.Download, null) },
-        title = { Text("Descargar video") },
+        title = { Text(if (isYouTube) "Descargar video" else "Descargar archivo") },
         text = {
             when {
                 loading -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(Modifier.size(24.dp)); Spacer(Modifier.width(12.dp)); Text("Analizando video…")
+                    CircularProgressIndicator(Modifier.size(24.dp)); Spacer(Modifier.width(12.dp)); Text("Analizando…")
                 }
                 error != null -> Text("No se pudo extraer:\n$error")
                 else -> Column {
-                    Text(meta?.title ?: "", maxLines = 2, style = MaterialTheme.typography.titleSmall)
-                    Text(meta?.uploader ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(meta?.title ?: url.take(60), maxLines = 2, style = MaterialTheme.typography.titleSmall)
+                    meta?.uploader?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     Spacer(Modifier.height(8.dp))
                     LazyColumn(Modifier.heightIn(max = 320.dp)) {
                         if (videos.isNotEmpty()) {
-                            item { SectionLabel("Video") }
+                            item { SectionLabel(if (isYouTube) "Video" else "Archivo") }
                             items(videos.size) { i ->
                                 val o = videos[i]
                                 ListItem(

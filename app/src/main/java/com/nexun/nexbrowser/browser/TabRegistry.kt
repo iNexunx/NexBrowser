@@ -179,15 +179,68 @@ object TabRegistry {
     /** Detects a playable video on the page and exposes it to the UI. */
     private fun detectPlayableVideo(view: WebView?, pageUrl: String?) {
         val u = pageUrl ?: return
-        val isYt = Regex("""(?:youtube\.com/(?:watch|shorts|embed)|youtu\.be/)""").containsMatchIn(u)
-        detectedVideoUrl.value = if (isYt && YouTubeExtractor.parseId(u) != null) u else null
+        val isYt = Regex("""(?:youtube\.com/(?:watch|shorts|embed|live)|youtu\.be/)""").containsMatchIn(u)
+        if (isYt && YouTubeExtractor.parseId(u) != null) {
+            detectedVideoUrl.value = u
+            return
+        }
+        // Generic: page itself is a media file.
+        if (Regex("""\.(mp4|m3u8|webm|mkv|mov|mp3|m4a)(\?|$)""", RegexOption.IGNORE_CASE)
+                .containsMatchIn(u)
+        ) {
+            detectedVideoUrl.value = u
+            return
+        }
+        // Otherwise scan the DOM for a video element / media source.
+        runCatching {
+            view?.evaluateJavascript(SCAN_VIDEO_JS) { result ->
+                val found = result?.trim('"')
+                detectedVideoUrl.value = found?.takeIf { it.startsWith("http") }
+            }
+        }
     }
+
+    private const val SCAN_VIDEO_JS =
+        "(function(){try{" +
+            "var v=document.querySelector('video');" +
+            "if(v){if(v.currentSrc&&/^https?:/.test(v.currentSrc))return v.currentSrc;" +
+            "var s=v.querySelector('source');if(s&&s.src&&/^https?:/.test(s.src))return s.src;}" +
+            "var m=document.querySelector('video[src],audio[src],source[src]');" +
+            "if(m&&m.src&&/^https?:/.test(m.src))return m.src;" +
+            "var links=document.querySelectorAll('a[href]');" +
+            "for(var i=0;i<links.length;i++){var h=links[i].href;" +
+            "if(/\\.(mp4|m3u8|webm|mkv|mov|mp3|m4a)(\\?|$)/i.test(h))return h;}" +
+            "return '';}catch(e){return '';}})()"
 
     private fun handleUrlOverride(tab: Tab, view: WebView, raw: String): Boolean {
         val u = raw.trim()
         if (u.isEmpty()) return false
-        if (!u.startsWith("http://") && !u.startsWith("https://") && !u.startsWith("about:")) {
+        // Non-web schemes: hand off to the system (mailto, tel, intent, market...).
+        if (u.startsWith("intent:") || u.startsWith("mailto:") || u.startsWith("tel:") ||
+            u.startsWith("sms:") || u.startsWith("market:") || u.startsWith("whatsapp:")
+        ) {
+            runCatching {
+                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(u))
+                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                appContext?.startActivity(intent)
+            }
+            return true
+        }
+        if (!u.startsWith("http://") && !u.startsWith("https://") && !u.startsWith("about:") &&
+            !u.startsWith("blob:") && !u.startsWith("data:") && !u.startsWith("file:")
+        ) {
             return false
+        }
+        // blob:/data: cannot be navigated to directly; resolve via JS download.
+        if (u.startsWith("blob:")) {
+            runCatching {
+                view.evaluateJavascript(
+                    "(function(){var a=document.createElement('a');a.href=${jsString(u)};" +
+                        "a.download='archivo';document.body.appendChild(a);a.click();a.remove();})();",
+                    null
+                )
+            }
+            return true
         }
         if (BrowserSettings.httpsOnly && u.startsWith("http://")) {
             runCatching { view.loadUrl(u.replaceFirst("http://", "https://")) }
@@ -195,5 +248,10 @@ object TabRegistry {
         }
         tab.url = u
         return false
+    }
+
+    private fun jsString(s: String): String {
+        val e = s.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
+        return "'$e'"
     }
 }
