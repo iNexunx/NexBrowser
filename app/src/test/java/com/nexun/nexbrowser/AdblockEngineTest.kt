@@ -52,7 +52,7 @@ class AdblockEngineTest {
     @Test
     fun parsesEasyListSyntax() {
         // Trailing options + path must still yield the host.
-        AdblockEngine.loadRules("||evil-ads.net^$script,third-party")
+        AdblockEngine.loadRules("||evil-ads.net^\$script,third-party")
         assertTrue(AdblockEngine.shouldBlock("https://sub.evil-ads.net/x.js", "https://x.com"))
     }
 }
