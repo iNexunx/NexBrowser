@@ -123,11 +123,34 @@ class MediaBackgroundService : Service() {
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(open)
             .setOngoing(true)
+            .setShowWhen(false)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .addAction(0, "Detener", stop)
+        if (Build.VERSION.SDK_INT >= 21) {
+            builder.setStyle(
+                Notification.MediaStyle()
+                    .setMediaSession(session?.sessionToken)
+                    .setShowActionsInCompactView(0)
+            )
+        }
         return builder.build()
+    }
+
+    /** Re-arm the foreground service if the task is swiped away while playing. */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        if (playing) {
+            runCatching {
+                val restart = Intent(applicationContext, MediaBackgroundService::class.java)
+                    .setAction(ACTION_START)
+                    .putExtra(EXTRA_TITLE, lastTitle)
+                if (Build.VERSION.SDK_INT >= 26) startForegroundService(restart)
+                else startService(restart)
+            }
+        }
     }
 
     override fun onDestroy() {

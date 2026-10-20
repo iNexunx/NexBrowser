@@ -619,6 +619,11 @@ private fun DownloadsDialog(onDismiss: () -> Unit) {
                                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         )
                                     }
+                                    if (d.state == "Completado") {
+                                        IconButton(onClick = { openDownloaded(context, d) }) {
+                                            Icon(AppIcons.Download, "Abrir", Modifier.size(18.dp))
+                                        }
+                                    }
                                     IconButton(onClick = { DownloadsRegistry.remove(i) }) {
                                         Icon(Icons.Default.Close, "Quitar", Modifier.size(18.dp))
                                     }
@@ -642,6 +647,31 @@ private fun DownloadsDialog(onDismiss: () -> Unit) {
                 TextButton(onClick = { DownloadsRegistry.clearFinished() }) { Text("Limpiar") }
         },
     )
+}
+
+/** Opens a finished download with the system viewer (Via-style "open file"). */
+private fun openDownloaded(context: Context, d: DownloadEntry) {
+    runCatching {
+        val uri: android.net.Uri = if (d.path.isNotBlank() && java.io.File(d.path).exists()) {
+            androidx.core.content.FileProvider.getUriForFile(
+                context, "${context.packageName}.fileprovider", java.io.File(d.path)
+            )
+        } else if (d.downloadId >= 0) {
+            val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+            dm.getUriForDownloadedFile(d.downloadId)
+        } else {
+            return
+        }
+        val mime = android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(d.name.substringAfterLast('.', "").lowercase())
+            ?: "*/*"
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mime)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+    }
 }
 
 /** Full-screen settings & menu page (no swipe drawer). */

@@ -219,6 +219,13 @@ object TabRegistry {
             val ctx = appContext ?: return
             com.nexun.nexbrowser.media.MediaControl.stop(ctx)
         }
+
+        @android.webkit.JavascriptInterface
+        fun onDownloadBlob(base64: String?, name: String?, mime: String?) {
+            val ctx = appContext ?: return
+            if (base64.isNullOrBlank()) return
+            com.nexun.nexbrowser.download.BlobDownloader.save(ctx, base64, name ?: "archivo", mime)
+        }
     }
 
     private val MEDIA_WATCH_JS = """
@@ -324,13 +331,9 @@ object TabRegistry {
             return false
         }
         // blob:/data: cannot be navigated to directly; resolve via JS download.
-        if (u.startsWith("blob:")) {
+        if (u.startsWith("blob:") || u.startsWith("data:")) {
             runCatching {
-                view.evaluateJavascript(
-                    "(function(){var a=document.createElement('a');a.href=${jsString(u)};" +
-                        "a.download='archivo';document.body.appendChild(a);a.click();a.remove();})();",
-                    null
-                )
+                view.evaluateJavascript(nexBlobDownloadJs(u), null)
             }
             return true
         }
@@ -346,4 +349,36 @@ object TabRegistry {
         val e = s.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
         return "'$e'"
     }
+
+    /**
+     * Resolves a blob:/data: URL into a base64 payload and hands it to the native
+     * side via the NexMedia bridge, which writes it to the Downloads folder.
+     */
+    private fun nexBlobDownloadJs(url: String): String = """
+        (function(){
+          try{
+            var u = ${jsString(url)};
+            var name = 'archivo';
+            try {
+              var seg = u.substring(u.lastIndexOf('/') + 1).split('?')[0];
+              if (u.indexOf('blob:') === 0) {
+                var a = document.querySelector('a[href="' + u + '"]');
+                if (a && a.download) seg = a.download;
+              }
+              if (seg && seg.length) name = decodeURIComponent(seg);
+            } catch(e) {}
+            fetch(u).then(function(r){ return r.blob(); }).then(function(b){
+              var fr = new FileReader();
+              fr.onload = function(){
+                var data = fr.result;
+                var comma = data.indexOf(',');
+                var b64 = data.substring(comma + 1);
+                var mime = b.type || 'application/octet-stream';
+                if(window.NexMedia && NexMedia.onDownloadBlob) NexMedia.onDownloadBlob(b64, name, mime);
+              };
+              fr.readAsDataURL(b);
+            }).catch(function(e){});
+          }catch(e){}
+        })();
+    """.trimIndent()
 }

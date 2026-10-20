@@ -37,7 +37,8 @@ class Tab(val id: Long) {
         }
         runCatching {
             wv.setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimetype, _ ->
-                BrowserDownloader.start(context, url, userAgent, contentDisposition, mimetype)
+                val referer = runCatching { wv.url }.getOrNull()
+                BrowserDownloader.start(context, url, userAgent, contentDisposition, mimetype, referer)
             })
         }
         runCatching { savedState?.let { wv.restoreState(it) } }

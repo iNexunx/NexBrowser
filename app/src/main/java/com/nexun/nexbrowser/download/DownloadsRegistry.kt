@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import androidx.compose.runtime.mutableStateListOf
+import java.util.concurrent.atomic.AtomicLong
 
 data class DownloadEntry(
     val name: String,
@@ -14,6 +15,8 @@ data class DownloadEntry(
     val downloadId: Long = -1L,
     /** 0..100, -1 when unknown. */
     val progress: Int = -1,
+    /** Local file path once the download finishes, else "". */
+    val path: String = "",
 )
 
 object DownloadsRegistry {
@@ -21,6 +24,7 @@ object DownloadsRegistry {
     private val idToName = HashMap<Long, String>()
     private var receiver: BroadcastReceiver? = null
     private var appContext: Context? = null
+    private val localIdGen = AtomicLong(1)
 
     fun register(context: Context) {
         appContext = context.applicationContext
@@ -53,6 +57,26 @@ object DownloadsRegistry {
 
     fun add(entry: DownloadEntry) { items.add(0, entry) }
 
+    /** Registers a new in-progress entry for the app's own DownloadService. */
+    fun startEntry(name: String): Long {
+        val id = localIdGen.getAndIncrement()
+        items.add(0, DownloadEntry(name, "Descargando", "Preparando…", -id))
+        return id
+    }
+
+    /** Updates an entry created by [startEntry] (identified by its local negative id). */
+    fun updateEntry(id: Long, progress: Int, detail: String, state: String? = null, path: String = "") {
+        val i = items.indexOfFirst { it.downloadId == -id }
+        if (i < 0) return
+        val cur = items[i]
+        items[i] = cur.copy(
+            state = state ?: cur.state,
+            detail = detail,
+            progress = progress,
+            path = path.ifBlank { cur.path },
+        )
+    }
+
     fun update(name: String, state: String, detail: String, progress: Int = -1) {
         val i = items.indexOfFirst { it.name == name }
         if (i >= 0) items[i] = items[i].copy(state = state, detail = detail, progress = progress)
@@ -64,7 +88,7 @@ object DownloadsRegistry {
         if (i >= 0) items[i] = items[i].copy(state = state, detail = detail, progress = progress)
     }
 
-    /** Polls DownloadManager for live progress of tracked downloads. */
+    /** Polls DownloadManager for live progress of tracked system downloads. */
     fun refreshProgress() {
         val ctx = appContext ?: return
         val dm = runCatching { ctx.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager }
