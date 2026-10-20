@@ -30,8 +30,14 @@ object TabRegistry {
         private set
     /** URL of a currently playable YouTube video, or null. Drives the floating download button. */
     val detectedVideoUrl = mutableStateOf<String?>(null)
+    /** Long-press context menu target (kind, url, extra). */
+    val longPress = mutableStateOf<LongPress?>(null)
     private var appContext: Context? = null
     private val idGen = AtomicLong(1)
+
+    data class LongPress(val kind: Kind, val url: String, val label: String) {
+        enum class Kind { LINK, IMAGE, MEDIA, GENERIC }
+    }
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -164,6 +170,30 @@ object TabRegistry {
                 }
             }
             override fun onReceivedTitle(view: WebView?, title: String?) { tab.title = title ?: "" }
+        }
+        runCatching {
+            wv.setOnLongClickListener {
+                val r = it.hitTestResult
+                val extra = r.extra ?: ""
+                val kind = when (r.type) {
+                    android.webkit.WebView.HitTestResult.SRC_ANCHOR_TYPE,
+                    android.webkit.WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE ->
+                        LongPress.Kind.LINK
+                    android.webkit.WebView.HitTestResult.IMAGE_TYPE ->
+                        LongPress.Kind.IMAGE
+                    else -> if (Regex("""\.(mp4|m3u8|webm|mp3|m4a)(\?|$)""", RegexOption.IGNORE_CASE)
+                            .containsMatchIn(extra)
+                    ) LongPress.Kind.MEDIA else LongPress.Kind.GENERIC
+                }
+                val url = when (kind) {
+                    LongPress.Kind.LINK -> r.extra ?: ""
+                    LongPress.Kind.IMAGE -> r.extra ?: ""
+                    else -> r.extra ?: ""
+                }
+                if (url.isBlank() && kind == LongPress.Kind.GENERIC) return@setOnLongClickListener false
+                longPress.value = LongPress(kind, url, url)
+                true
+            }
         }
     }
 

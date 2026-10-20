@@ -141,6 +141,9 @@ object AdblockEngine {
     fun shouldBlock(url: String, pageUrl: String?): Boolean {
         if (!enabled) return false
         val host = hostOf(url) ?: return false
+        val pageHost = pageUrl?.let { hostOf(it) }
+        // Never block the main document's own assets' host entirely (avoid breaking sites):
+        // we still allow page-host requests unless they match an ad path pattern.
         if (isExcepted(host)) return false
         if (matchesHost(host)) { blockedCount++; return true }
         if (keywordRules.isNotEmpty()) {
@@ -149,7 +152,26 @@ object AdblockEngine {
                 if (lower.contains(k)) { blockedCount++; return true }
             }
         }
+        // Aggressive: ad-like paths even on first-party hosts (Via-style).
+        if (host == pageHost || (pageHost != null && host.endsWith(".$pageHost"))) {
+            if (matchesAdPath(url)) { blockedCount++; return true }
+        }
         return false
+    }
+
+    private val AD_PATH = Regex(
+        """/(ad|ads|adv|advert|adserver|adservice|banner|popup|popunder|sponsor|promo|track|tracking|analytics|pixel|beacon|impression)[/_\-.]""",
+        RegexOption.IGNORE_CASE
+    )
+
+    private fun matchesAdPath(url: String): Boolean {
+        val noQuery = url.substringBefore('?')
+        if (AD_PATH.containsMatchIn(noQuery)) return true
+        val lower = url.lowercase()
+        return lower.contains("ad_type=") || lower.contains("ad_slot=") ||
+            lower.contains("utm_") && lower.contains("ads") ||
+            lower.contains("/pagead/") || lower.contains("/gampad/") ||
+            lower.contains("googlesyndication") || lower.contains("doubleclick")
     }
 
     private fun matchesHost(host: String): Boolean {

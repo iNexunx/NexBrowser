@@ -36,6 +36,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.activity.compose.BackHandler
+import android.content.ClipData
+import android.content.ClipboardManager
 import com.nexun.nexbrowser.adblock.AdblockEngine
 import com.nexun.nexbrowser.adblock.FilterListRepo
 import com.nexun.nexbrowser.browser.BrowserSettings
@@ -63,8 +66,25 @@ fun BrowserScreen(onOpenExternal: (String) -> Unit) {
     var showYt by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var findQuery by remember { mutableStateOf<String?>(null) }
+    val longPress by TabRegistry.longPress
 
     val secure = Url.isSecure(tab.url)
+
+    // System / edge back gesture: navigate web history, then close overlays.
+    BackHandler(enabled = showSettings || showTabs || showDownloads || showYt || editing) {
+        when {
+            showYt -> showYt = false
+            showDownloads -> showDownloads = false
+            showTabs -> showTabs = false
+            editing -> editing = false
+            showSettings -> showSettings = false
+        }
+    }
+    BackHandler(enabled = !(showSettings || showTabs || showDownloads || showYt || editing)) {
+        val wv = tab.webView
+        if (wv != null && wv.canGoBack()) wv.goBack()
+        else if (wv != null && tab.url != TabRegistry.HOME) wv.loadUrl(TabRegistry.HOME)
+    }
 
     // Full-screen settings page (no swipe drawer).
     if (showSettings) {
@@ -204,34 +224,122 @@ fun BrowserScreen(onOpenExternal: (String) -> Unit) {
         onDismiss = { showYt = false },
         onDownload = { opt, name ->
             val label = opt.quality
-            DownloadsRegistry.add(DownloadEntry(name, "Descargando", label))
-            scope.launch {
-                runCatching { YouTubeExtractor.download(context, opt, name) }
-                    .onSuccess { DownloadsRegistry.update(name, "Completado", it.absolutePath) }
-                    .onFailure { DownloadsRegistry.update(name, "Error", it.message ?: "") }
+            if (YouTubeExtractor.parseId(opt.url) != null || opt.resolution == "audio" ||
+                YouTubeExtractor.parseId(url) != null
+            ) {
+                DownloadsRegistry.add(DownloadEntry(name, "Descargando", label))
+                scope.launch {
+                    runCatching { YouTubeExtractor.download(context, opt, name) }
+                        .onSuccess { DownloadsRegistry.update(name, "Completado", it.absolutePath) }
+                        .onFailure { DownloadsRegistry.update(name, "Error", it.message ?: "") }
+                }
+            } else {
+                com.nexun.nexbrowser.browser.BrowserDownloader.start(
+                    context, opt.url, null, null, null
+                )
             }
             showYt = false
         },
     )
+    longPress?.let { lp ->
+        LongPressMenu(
+            lp = lp,
+            onDismiss = { TabRegistry.longPress.value = null },
+            onOpenNewTab = { TabRegistry.longPress.value = null; TabRegistry.openTab(lp.url) },
+            onOpenHere = { TabRegistry.longPress.value = null; tab.webView?.loadUrl(lp.url) },
+            onCopy = {
+                TabRegistry.longPress.value = null
+                runCatching {
+                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    cm.setPrimaryClip(ClipData.newPlainText("url", lp.url))
+                }
+            },
+            onDownload = {
+                TabRegistry.longPress.value = null
+                com.nexun.nexbrowser.browser.BrowserDownloader.start(
+                    context, lp.url, null, null, null
+                )
+            },
+            onShare = { TabRegistry.longPress.value = null; onOpenExternal(lp.url) },
+        )
+    }
 }
 
-/** Pull-down-to-refresh: triggers reload when the page is scrolled to the top. */
+@Composable
+private fun LongPressMenu(
+    lp: TabRegistry.LongPress,
+    onDismiss: () -> Unit,
+    onOpenNewTab: () -> Unit,
+    onOpenHere: () -> Unit,
+    onCopy: () -> Unit,
+    onDownload: () -> Unit,
+    onShare: () -> Unit,
+) {
+    val title = when (lp.kind) {
+        TabRegistry.LongPress.Kind.LINK -> "Enlace"
+        TabRegistry.LongPress.Kind.IMAGE -> "Imagen"
+        TabRegistry.LongPress.Kind.MEDIA -> "Video/audio"
+        TabRegistry.LongPress.Kind.GENERIC -> "Elemento"
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                Text(lp.url.take(120), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3)
+                Spacer(Modifier.height(8.dp))
+                if (lp.kind == TabRegistry.LongPress.Kind.LINK) {
+                    ListItem(text = { Text("Abrir en pestaña nueva") },
+                        modifier = Modifier.clickable(onClick = onOpenNewTab))
+                    ListItem(text = { Text("Abrir aquí") },
+                        modifier = Modifier.clickable(onClick = onOpenHere))
+                }
+                if (lp.kind == TabRegistry.LongPress.Kind.IMAGE ||
+                    lp.kind == TabRegistry.LongPress.Kind.MEDIA ||
+                    lp.kind == TabRegistry.LongPress.Kind.LINK
+                ) {
+                    ListItem(text = { Text("Descargar") },
+                        modifier = Modifier.clickable(onClick = onDownload))
+                }
+                ListItem(text = { Text("Copiar enlace") },
+                    modifier = Modifier.clickable(onClick = onCopy))
+                ListItem(text = { Text("Compartir") },
+                    modifier = Modifier.clickable(onClick = onShare))
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } },
+    )
+}
+
+/** Pull-down-to-refresh: single-finger only, ignores pinch-zoom to avoid lag. */
 private fun attachPullToRefresh(wv: WebView, onRefresh: () -> Unit) {
     var startY = 0f
+    var startX = 0f
+    var tracking = false
     var triggered = false
     wv.setOnTouchListener { _, ev ->
-        when (ev.action) {
+        when (ev.actionMasked) {
             android.view.MotionEvent.ACTION_DOWN -> {
-                startY = ev.y; triggered = false
+                startY = ev.y; startX = ev.x; triggered = false
+                tracking = true
+            }
+            android.view.MotionEvent.ACTION_POINTER_DOWN -> {
+                // Second finger: it's a pinch-zoom, cancel refresh tracking.
+                tracking = false; triggered = false
             }
             android.view.MotionEvent.ACTION_MOVE -> {
-                if (!triggered && wv.scrollY == 0 && ev.y - startY > 240f) {
+                if (!tracking || triggered) return@setOnTouchListener false
+                val dy = ev.y - startY
+                val dx = kotlin.math.abs(ev.x - startX)
+                if (dx > kotlin.math.abs(dy)) { tracking = false; return@setOnTouchListener false }
+                if (dy > 280f && wv.scrollY <= 0 && !wv.canScrollVertically(-1)) {
                     triggered = true
                     onRefresh()
                 }
             }
             android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
-                triggered = false
+                tracking = false; triggered = false
             }
         }
         false

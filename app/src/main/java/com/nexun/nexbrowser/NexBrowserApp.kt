@@ -5,6 +5,7 @@ import com.nexun.nexbrowser.adblock.AdblockEngine
 import com.nexun.nexbrowser.adblock.FilterListRepo
 import com.nexun.nexbrowser.browser.BrowserSettings
 import com.nexun.nexbrowser.browser.TabRegistry
+import com.nexun.nexbrowser.download.DownloadsRegistry
 
 class NexBrowserApp : Application() {
     override fun onCreate() {
@@ -14,6 +15,7 @@ class NexBrowserApp : Application() {
         BrowserSettings.init(this)
         AdblockEngine.ensureSeed()
         FilterListRepo.init(this)
+        DownloadsRegistry.register(this)
     }
 
     companion object { lateinit var instance: NexBrowserApp; private set }
