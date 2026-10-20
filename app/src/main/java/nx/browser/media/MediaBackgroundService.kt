@@ -132,7 +132,6 @@ class MediaBackgroundService : Service() {
         if (Build.VERSION.SDK_INT >= 21) {
             builder.setStyle(
                 androidx.media.app.NotificationCompat.MediaStyle()
-                    .setMediaSession(session?.sessionToken)
                     .setShowActionsInCompactView(0)
             )
         }
