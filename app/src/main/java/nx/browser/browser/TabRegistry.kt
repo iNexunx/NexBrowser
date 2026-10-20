@@ -135,7 +135,11 @@ object TabRegistry {
 
             override fun shouldInterceptRequest(view: WebView, req: WebResourceRequest): WebResourceResponse? {
                 if (tab.safeMode) return null
-                val pageUrl = view.url ?: tab.url
+                // NOTE: this callback runs on a background thread. Never call any
+                // WebView method here (view.url, etc.) or the renderer crashes with
+                // "A WebView method was called on thread 'ThreadPoolForeg'". Use the
+                // tab's cached URL instead.
+                val pageUrl = tab.url.ifBlank { tab.lastUrl }
                 if (!BrowserSettings.shieldsEnabledFor(hostOfSafe(pageUrl))) return null
                 val u = req.url?.toString() ?: return null
                 return runCatching {
